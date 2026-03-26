@@ -1,0 +1,22 @@
+# Generated directories (created by materialize.sh)
+research/
+lowering-pass/
+
+# Generated factory artifacts (created by materialize.sh)
+factory/session-packages/
+factory/initiation/
+factory/logs/
+factory/compiler-queue/
+factory/session-manifest.json
+factory/init-compiler.sh
+factory/bootstrap-compiler-repo.sh
+factory/start-compiler-flow.sh
+factory/status-compiler-flow.sh
+factory/stop-compiler-flow.sh
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store

@@ -1,0 +1,133 @@
+{
+  "project_name": "New Topic Research",
+  "project_slug": "run-template-research",
+  "project_summary": "Autonomous deep-loop research sprint for New Topic.",
+  "research_goal": "Understand the New Topic sector well enough to pick a narrow product wedge, define the correct user, and generate a lowering pass that can drive a factory build.",
+  "core_question": "What specific product should be built in New Topic, for which user, and what are the minimum primitives required for a credible first release?",
+  "atomic_win": "A concrete product wedge with evidence-backed scope, constraints, and implementation sequencing.",
+  "tag": "run-template",
+  "workspace_dir_hint": "~/Desktop/run-template/research",
+  "swarm_session_name": "run-template-research",
+  "notification_prefix": "New Topic research",
+  "known_context": [],
+  "priority_directives": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "directive_order": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "minimum_answered_entries": 24,
+  "minimum_meta_cycles": 3,
+  "report_sections": [
+    "Executive Summary",
+    "Sector Overview",
+    "Target User and Pain",
+    "Workflow and Constraints",
+    "Competitive Landscape",
+    "Product Wedge",
+    "Universal or Canonical Primitives",
+    "Risks and Unknowns",
+    "Implementation Roadmap"
+  ],
+  "output_target": {
+    "title": "Evidence-Backed Product Spec",
+    "description": "Produce a research synthesis that is specific enough to drive a lowering pass and factory build without relying on guesswork.",
+    "points": [
+      "who the target buyer or operator is",
+      "which workflow pain matters enough to solve now",
+      "which competitors define the market frame",
+      "which narrow MVP wedge is worth building first",
+      "which primitives and constraints must survive the lowering pass"
+    ]
+  },
+  "directives": [
+    {
+      "id": "A",
+      "title": "Market Structure",
+      "overview": "Understand the sector shape, spending logic, and where this market is already crowded or weak.",
+      "questions": [
+        "Who are the main buyer segments in this market?",
+        "What problem categories are they already paying to solve?",
+        "Which market shifts or platform changes make this topic newly interesting?",
+        "Where is the market fragmented versus concentrated?",
+        "What adjacent categories compete for the same budget?"
+      ]
+    },
+    {
+      "id": "B",
+      "title": "User Workflow and Pain",
+      "overview": "Map the real workflow, the expensive bottlenecks, and the moments where a product could create leverage.",
+      "questions": [
+        "What does the current workflow look like before software intervention?",
+        "Where do users lose time, money, or trust in that workflow?",
+        "Which steps require judgment versus rote coordination?",
+        "Which pain points are urgent enough to justify adoption?",
+        "Which parts of the workflow must remain human-reviewed?"
+      ]
+    },
+    {
+      "id": "C",
+      "title": "Competitive Landscape",
+      "overview": "Identify direct and adjacent competitors, their wedge, and where they leave obvious space open.",
+      "questions": [
+        "Who are the direct competitors for this workflow?",
+        "How are they positioned and priced?",
+        "What capabilities are table stakes versus differentiators?",
+        "What do public docs, reviews, or demos suggest users still dislike?",
+        "Which adjacent tools solve part of the job but not the full workflow?"
+      ]
+    },
+    {
+      "id": "D",
+      "title": "Product Definition",
+      "overview": "Turn the research into a product wedge, a primitive model, and a buildable scope boundary.",
+      "questions": [
+        "What is the best one-run MVP wedge for this market?",
+        "Which user and use case should be explicitly excluded from v1?",
+        "What canonical entities or primitives does the product need?",
+        "What technical or legal constraints materially affect scope?",
+        "What should go into the lowering pass so the factory compiler builds the right thing?"
+      ]
+    }
+  ],
+  "agent_groups": [
+    {
+      "name": "agent-1",
+      "directives": [
+        "A"
+      ],
+      "minimum_questions_per_directive": 5,
+      "start_question": "Who are the main buyer segments in this market?"
+    },
+    {
+      "name": "agent-2",
+      "directives": [
+        "B"
+      ],
+      "minimum_questions_per_directive": 5,
+      "start_question": "What does the current workflow look like before software intervention?"
+    },
+    {
+      "name": "agent-3",
+      "directives": [
+        "C"
+      ],
+      "minimum_questions_per_directive": 5,
+      "start_question": "Who are the direct competitors for this workflow?"
+    },
+    {
+      "name": "agent-4",
+      "directives": [
+        "D"
+      ],
+      "minimum_questions_per_directive": 5,
+      "start_question": "What is the best one-run MVP wedge for this market?"
+    }
+  ]
+}

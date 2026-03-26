@@ -1,0 +1,269 @@
+{
+  "project_name": "New Topic Product",
+  "product_summary": "Replace this summary after research. State the chosen user, workflow, wedge, and why this build should exist.",
+  "repo": "./app",
+  "constitution": {
+    "title": "New Topic Build Constitution",
+    "what_it_is": "Replace this with a precise product statement after research. Describe the user, the promise, and the core workflow in plain language.",
+    "core_loop": [
+      "A user brings a real input into the system.",
+      "The system turns that input into reviewable structured state.",
+      "The product produces a concrete output or decision artifact the user can act on."
+    ],
+    "positioning": [
+      "Replace this with the chosen wedge against direct competitors.",
+      "State what the product will not try to do in v1."
+    ],
+    "invariants": [
+      {
+        "title": "Scope Invariants",
+        "items": [
+          {
+            "label": "One narrow wedge",
+            "text": "The MVP must stay focused on the workflow proved by research, not a broad platform imitation."
+          },
+          {
+            "label": "Reviewable outputs",
+            "text": "Core outputs must remain inspectable and correctable by a human before final use."
+          }
+        ]
+      },
+      {
+        "title": "Implementation Invariants",
+        "items": [
+          {
+            "label": "Local-first buildability",
+            "text": "A reviewer must be able to run the product locally without exotic infrastructure."
+          },
+          {
+            "label": "Traceable product claims",
+            "text": "Do not encode capabilities or promises that are not backed by the research and the actual implementation."
+          }
+        ]
+      }
+    ],
+    "primitives": [
+      {
+        "name": "Actor",
+        "summary": "The primary user or operational role interacting with the product.",
+        "current_status": "Starter placeholder. Replace after research.",
+        "owner": "app/domain"
+      },
+      {
+        "name": "Source Record",
+        "summary": "The incoming object, document, or trigger that starts the workflow.",
+        "current_status": "Starter placeholder. Replace after research.",
+        "owner": "app/domain"
+      },
+      {
+        "name": "Reviewable Draft",
+        "summary": "An intermediate output that can be inspected, edited, and approved.",
+        "current_status": "Starter placeholder. Replace after research.",
+        "owner": "app/core"
+      },
+      {
+        "name": "Exported Artifact",
+        "summary": "The final object or output package the user leaves with.",
+        "current_status": "Starter placeholder. Replace after research.",
+        "owner": "app/export"
+      }
+    ],
+    "file_ownership": [
+      {
+        "path": "app/",
+        "description": "Main implementation surface for the product."
+      },
+      {
+        "path": "app/domain/",
+        "description": "Core entities, state transitions, and business rules."
+      },
+      {
+        "path": "app/ui/",
+        "description": "The operator-facing flow and review surfaces."
+      }
+    ],
+    "done_criteria": [
+      {
+        "name": "Core Workflow",
+        "criteria": [
+          "A first-time user can complete the happy path from input to final output.",
+          "The main product state is visible and reviewable.",
+          "The output matches the chosen wedge from research."
+        ]
+      }
+    ]
+  },
+  "debt": {
+    "title": "New Topic Initial Compiler Work Items",
+    "intro": "> Replace these placeholders with product-specific work after research. The goal is to encode the chosen spec as execution waves, not a generic backlog.",
+    "work_items": [
+      {
+        "id": "DEBT-001",
+        "title": "Implement the core input-to-draft workflow",
+        "priority": "high",
+        "primitive": "core-loop",
+        "package": "app/domain, app/ui",
+        "effort": "M",
+        "status": "TODO",
+        "ground_truth": [
+          "Replace with facts learned in research and the baseline repo state."
+        ],
+        "scope": [
+          "Replace with the exact workflow to implement.",
+          "State what gets created, transformed, and approved."
+        ],
+        "acceptance": [
+          "A real sample input can flow through the product.",
+          "The user can inspect or edit the intermediate state.",
+          "The result can be finalized without hidden manual steps."
+        ],
+        "files": [
+          "app/domain/",
+          "app/ui/"
+        ]
+      },
+      {
+        "id": "DEBT-002",
+        "title": "Add verification, demo data, and export path",
+        "priority": "medium",
+        "primitive": "verification",
+        "package": "app/export, app/tests",
+        "effort": "M",
+        "status": "TODO",
+        "ground_truth": [
+          "Replace with actual constraints from the chosen product wedge."
+        ],
+        "scope": [
+          "Add demo or fixture data for the happy path.",
+          "Add the export or completion artifact the user expects.",
+          "Add tests or validation around the core workflow."
+        ],
+        "acceptance": [
+          "A reviewer can demo the end-to-end flow locally.",
+          "The main output can be exported or completed visibly.",
+          "The product has at least one real verification gate."
+        ],
+        "files": [
+          "app/export/",
+          "app/tests/"
+        ]
+      }
+    ],
+    "execution_order": [
+      [
+        "DEBT-001"
+      ],
+      [
+        "DEBT-002"
+      ]
+    ]
+  },
+  "review": {
+    "title": "Factory Verification Gates",
+    "intro": "> Use these as generic starter gates, then tighten them for the product you actually chose.",
+    "how_to_use": [
+      "Map each work item to a risk tier in factory.yaml.",
+      "Run the required gates before marking an item complete.",
+      "Block merge on failing gates.",
+      "Escalate only when a human approval condition is explicitly met."
+    ],
+    "gates": [
+      {
+        "number": 1,
+        "title": "Type Safety",
+        "applies_to": [
+          "critical",
+          "high",
+          "medium"
+        ],
+        "command": "npm run typecheck",
+        "pass_condition": "No type errors",
+        "failure_action": "Stop and return the errors to the implementing agent.",
+        "checks": [
+          "Public types match the intended workflow.",
+          "No placeholder types remain in the changed surface."
+        ]
+      },
+      {
+        "number": 2,
+        "title": "Happy Path Verification",
+        "applies_to": [
+          "critical",
+          "high"
+        ],
+        "command": "npm test",
+        "pass_condition": "Core workflow passes verification",
+        "failure_action": "Block merge until the main flow is working.",
+        "checks": [
+          "Input-to-output path is verified.",
+          "Human review or approval step remains intact if required."
+        ]
+      },
+      {
+        "number": 3,
+        "title": "Scope Discipline",
+        "applies_to": [
+          "critical",
+          "high",
+          "medium"
+        ],
+        "type": "manual",
+        "pass_condition": "Change stays inside the chosen wedge",
+        "failure_action": "Cut scope or split into a later item.",
+        "checks": [
+          "No unresearched product surface was added opportunistically.",
+          "The implementation still matches the research-backed wedge."
+        ]
+      }
+    ],
+    "merge_protocol": [
+      "Run automated gates first.",
+      "Check the implementation against CLAUDE.md invariants.",
+      "Reject work that widens scope without a research-backed reason."
+    ]
+  },
+  "factory": {
+    "version": 1,
+    "project": "run-template",
+    "repo": "./app",
+    "description": "Starter compiler config. Replace risk tiers and verification commands once the product is concrete.",
+    "risk_tiers": {
+      "critical": [
+        "auth",
+        "billing",
+        "security-sensitive data"
+      ],
+      "high": [
+        "core workflow",
+        "state transitions",
+        "exports"
+      ],
+      "medium": [
+        "operator UI",
+        "filters",
+        "non-critical polish"
+      ]
+    },
+    "risk_classification": {
+      "DEBT-001": "high",
+      "DEBT-002": "medium"
+    },
+    "execution_order": [
+      [
+        "DEBT-001"
+      ],
+      [
+        "DEBT-002"
+      ]
+    ],
+    "verification": {
+      "lint": "npm run lint",
+      "typecheck": "npm run typecheck",
+      "tests": "npm test"
+    },
+    "metadata": {
+      "status": "starter-template",
+      "source": "deep-loop run kit"
+    }
+  }
+}
