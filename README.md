@@ -412,6 +412,29 @@ cd /path/to/new-repo
 - **git** — research agents commit after each finding
 - **CAR** (`codex-autorunner`) — optional, for automated ticket-flow execution
 - **OpenClaw** — optional, for event notifications during research
+- **tree-sitter** + **tree-sitter-language-pack** — optional, for the higher-fidelity polyglot middle-end
+
+---
+
+## Tree-sitter Middle-End
+
+The middle-end now prefers real `tree-sitter` grammars for supported languages:
+
+- Python
+- TypeScript / TSX
+- JavaScript / JSX
+- Go
+- Rust
+
+This path is driven by `core/optimizers/tree_sitter_adapter.py` and the `.scm` query files under `core/optimizers/queries/`.
+
+Install the optional parser dependencies with:
+
+```bash
+python3 -m pip install --user --break-system-packages tree-sitter tree-sitter-language-pack
+```
+
+If those packages are unavailable, the compiler falls back to the existing regex and Python-`ast` backends. The tree-sitter path is preferred because it improves polyglot slicing, cross-file linking, and best-effort parsing for broken code.
 
 ---
 

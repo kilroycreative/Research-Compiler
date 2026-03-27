@@ -77,6 +77,33 @@ class OptimizerTests(unittest.TestCase):
             self.assertEqual(len(slices), 1)
             self.assertIn("value", slices[0].excerpt)
 
+    def test_tree_sitter_extracts_cross_file_import_links_for_typescript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "helpers.ts").write_text("export function helper(x: number) { return x + 1; }\n", encoding="utf-8")
+            (root / "sample.ts").write_text(
+                "import { helper } from './helpers';\nexport function value(input: number) { return helper(input); }\n",
+                encoding="utf-8",
+            )
+            builder = SymbolTableBuilder()
+            symbols = builder.build(root, ["helpers.ts", "sample.ts"])
+            linker = Linker()
+            links = linker.build(root, ["sample.ts"], symbols)
+            self.assertTrue(any(link.symbol_name == "helper" and link.resolved_file_path == "helpers.ts" for link in links))
+
+    def test_tree_sitter_best_effort_slice_handles_broken_python(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "broken.py").write_text("def broken(x):\n  return x+\n", encoding="utf-8")
+            builder = SymbolTableBuilder()
+            symbols = builder.build(root, ["broken.py"])
+            self.assertTrue(any(symbol.name == "broken" for symbol in symbols))
+            pruner = ContextPruner()
+            slices = pruner.build(root, ["broken.py"], symbols, [])
+            self.assertEqual(len(slices), 1)
+            self.assertIn("tree-sitter", slices[0].rationale.lower())
+            self.assertIn("syntax errors", slices[0].rationale.lower())
+
     def test_pipeline_populates_optimized_middle_end(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

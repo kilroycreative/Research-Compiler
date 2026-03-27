@@ -44,6 +44,8 @@ class ContextPruner:
             rationale = f"{module.language} slice with imports and top-level definitions relevant to authorized file scope."
             if linked_names:
                 rationale += f" Linked imports: {', '.join(linked_names)}."
+            if module.has_errors:
+                rationale += " Tree-sitter detected syntax errors; this slice is best-effort and should be validated before compile."
 
             slices.append(
                 ContextSlice(

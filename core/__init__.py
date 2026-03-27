@@ -39,7 +39,9 @@ from .monitor import RuntimeMonitor, run_with_monitor
 from .monitor_backends import MonitorBackend, PollingMonitorBackend, WatchfilesMonitorBackend, build_monitor_backend
 from .merge_queue import MergeQueue, QueueResult, QueueTask
 from .optimizer_cache import OptimizerCache
-from .parsers import ParsedDefinition, ParsedModule, ParserRegistry
+from .optimizers.tree_sitter_adapter import LanguagePack, TreeSitterAdapter
+from .parser_types import ParsedDefinition, ParsedImport, ParsedModule
+from .parsers import ParserRegistry
 from .pipeline import PassManager, Pipeline, PipelineRequest, PipelineRunResult
 from .refinement import RefinementEmitter, RefinementPlanner, RefinementQueueEmitter, RefinementTask
 from .refinement_runner import RefinementQueueRunner
@@ -83,6 +85,7 @@ __all__ = [
     "OpenClawExecutor",
     "OptimizerCache",
     "ParsedDefinition",
+    "ParsedImport",
     "ParsedModule",
     "PassManager",
     "ParserRegistry",
@@ -122,8 +125,10 @@ __all__ = [
     "CostTracker",
     "TieredDispatcher",
     "TaskSummaryWriter",
+    "TreeSitterAdapter",
     "WatchfilesMonitorBackend",
     "WorktreeError",
     "WorktreeManager",
+    "LanguagePack",
     "build_monitor_backend",
 ]

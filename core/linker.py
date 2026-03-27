@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
+from .parsers import ParserRegistry
 from .ir import LinkedSymbol, SymbolDefinition
 
 
 class Linker:
     """Builds a linker map from imports to indexed symbols."""
+
+    def __init__(self, parser_registry: ParserRegistry | None = None) -> None:
+        self.parser_registry = parser_registry or ParserRegistry()
 
     def build(self, repo_root: str | Path, file_paths: list[str], symbol_table: list[SymbolDefinition]) -> list[LinkedSymbol]:
         repo = Path(repo_root).resolve()
@@ -20,37 +23,22 @@ class Linker:
         linked: list[LinkedSymbol] = []
         for rel_path in sorted(set(file_paths)):
             file_path = repo / rel_path
-            if not file_path.exists() or file_path.suffix != ".py":
+            if not file_path.exists():
                 continue
-            tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
-            for node in tree.body:
-                if isinstance(node, ast.ImportFrom):
-                    module = node.module
-                    for alias in node.names:
-                        name = alias.asname or alias.name
-                        resolved = self._resolve(module, alias.name, by_name)
-                        linked.append(
-                            LinkedSymbol(
-                                symbol_name=name,
-                                file_path=rel_path,
-                                source_module=module,
-                                resolved_file_path=resolved.file_path if resolved else None,
-                                resolved_symbol_name=resolved.name if resolved else None,
-                            )
-                        )
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        name = alias.asname or alias.name
-                        resolved = self._resolve(alias.name, alias.name.split(".")[-1], by_name)
-                        linked.append(
-                            LinkedSymbol(
-                                symbol_name=name,
-                                file_path=rel_path,
-                                source_module=alias.name,
-                                resolved_file_path=resolved.file_path if resolved else None,
-                                resolved_symbol_name=resolved.name if resolved else None,
-                            )
-                        )
+            source = file_path.read_text(encoding="utf-8")
+            module = self.parser_registry.parse_file(file_path, source)
+            for entry in module.import_entries:
+                symbol_name = entry.alias or entry.imported_name or entry.module.split("::")[-1].split(".")[-1].split("/")[-1]
+                resolved = self._resolve(entry.module, entry.imported_name or symbol_name, by_name)
+                linked.append(
+                    LinkedSymbol(
+                        symbol_name=symbol_name,
+                        file_path=rel_path,
+                        source_module=entry.module,
+                        resolved_file_path=resolved.file_path if resolved else None,
+                        resolved_symbol_name=resolved.name if resolved else None,
+                    )
+                )
         return linked
 
     def _resolve(
@@ -64,8 +52,17 @@ class Linker:
             return None
         if module_name is None:
             return candidates[0]
-        dotted_module = module_name.replace(".", "/")
+        dotted_module = (
+            module_name.replace(".", "/")
+            .replace("::", "/")
+            .lstrip("./")
+        )
         for candidate in candidates:
-            if candidate.file_path.removesuffix(".py").endswith(dotted_module):
+            normalized = candidate.file_path
+            for suffix in [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"]:
+                if normalized.endswith(suffix):
+                    normalized = normalized.removesuffix(suffix)
+                    break
+            if normalized.endswith(dotted_module):
                 return candidate
         return candidates[0]

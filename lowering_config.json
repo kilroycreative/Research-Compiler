@@ -632,6 +632,118 @@
           "tests/test_humanlayer_ticket_tool.py",
           "README.md"
         ]
+      },
+      {
+        "id": "DEBT-020",
+        "title": "Install tree-sitter language-pack support for compiler middle-end parsing",
+        "priority": "high",
+        "primitive": "tree-sitter",
+        "package": "core",
+        "effort": "S",
+        "status": "DONE",
+        "ground_truth": [
+          "The parser surface needs a real tree-sitter integration, not a placeholder availability check.",
+          "The middle-end should use installed language packs for Python, TypeScript, Go, and Rust."
+        ],
+        "scope": [
+          "Install and wire tree-sitter plus tree-sitter-language-pack.",
+          "Introduce a real tree-sitter adapter surface and query loading path.",
+          "Keep existing regex and Python-AST fallbacks only as backup paths."
+        ],
+        "acceptance": [
+          "The parser layer can load real grammars from tree-sitter-language-pack.",
+          "Supported languages include Python, TypeScript, Go, and Rust.",
+          "The fallback path remains available if tree-sitter is unavailable."
+        ],
+        "files": [
+          "core/parsers.py",
+          "core/optimizers/tree_sitter_adapter.py",
+          "core/optimizers/queries/"
+        ]
+      },
+      {
+        "id": "DEBT-021",
+        "title": "Implement UniversalSlicer with query-driven definitions and import references",
+        "priority": "high",
+        "primitive": "universal-slicer",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The middle-end should use S-expression queries instead of language-specific ad hoc extraction.",
+          "Definition and import-reference extraction should share one query-driven path."
+        ],
+        "scope": [
+          "Load .scm definition and import queries per language pack.",
+          "Use query captures to build parsed definitions, import references, and excerpt blocks.",
+          "Surface tree-sitter error tolerance through best-effort slices."
+        ],
+        "acceptance": [
+          "Tree-sitter queries drive definition extraction.",
+          "Import references are extracted into structured parser output.",
+          "Broken-but-recoverable code still produces a best-effort slice."
+        ],
+        "files": [
+          "core/optimizers/tree_sitter_adapter.py",
+          "core/slicing.py",
+          "tests/test_optimizer.py"
+        ]
+      },
+      {
+        "id": "DEBT-022",
+        "title": "Move symbol indexing and cross-file linking onto tree-sitter-backed parser output",
+        "priority": "high",
+        "primitive": "symbol-index",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Cross-file symbol resolution should consume the same parser output as slicing.",
+          "The linker should not remain Python-AST specific once the parser layer is polyglot."
+        ],
+        "scope": [
+          "Move symbol extraction onto parsed definitions from the tree-sitter adapter.",
+          "Move import-link resolution onto structured import entries from the parser layer.",
+          "Preserve normalization and fallback behavior for unsupported languages."
+        ],
+        "acceptance": [
+          "Symbol indexing no longer directly depends on Python AST traversal.",
+          "Link resolution uses parser import entries instead of Python-only import nodes.",
+          "Cross-file linking works for at least one non-Python language."
+        ],
+        "files": [
+          "core/symbols.py",
+          "core/linker.py",
+          "core/parser_types.py",
+          "tests/test_optimizer.py"
+        ]
+      },
+      {
+        "id": "DEBT-023",
+        "title": "Upgrade prompt compilation to consume higher-fidelity tree-sitter slices",
+        "priority": "medium",
+        "primitive": "prompt-fidelity",
+        "package": "core",
+        "effort": "S",
+        "status": "DONE",
+        "ground_truth": [
+          "Executor prompts should reflect the higher-fidelity middle-end output once tree-sitter is active."
+        ],
+        "scope": [
+          "Feed tree-sitter slice rationale and excerpts into the executor prompt path.",
+          "Surface best-effort parse warnings to the model through slice rationale.",
+          "Keep prompt generation deterministic."
+        ],
+        "acceptance": [
+          "Executor prompts continue preferring context slices over whole files.",
+          "Tree-sitter-derived rationale is visible in the prompt input surface.",
+          "Prompt compilation remains deterministic under identical IR."
+        ],
+        "files": [
+          "core/executors.py",
+          "core/slicing.py",
+          "tests/test_optimizer.py"
+        ]
       }
     ],
     "execution_order": [
@@ -673,6 +785,14 @@
       ],
       [
         "DEBT-019"
+      ],
+      [
+        "DEBT-020",
+        "DEBT-021"
+      ],
+      [
+        "DEBT-022",
+        "DEBT-023"
       ]
     ]
   },
@@ -781,7 +901,11 @@
       "DEBT-016": "critical",
       "DEBT-017": "high",
       "DEBT-018": "medium",
-      "DEBT-019": "medium"
+      "DEBT-019": "medium",
+      "DEBT-020": "high",
+      "DEBT-021": "high",
+      "DEBT-022": "high",
+      "DEBT-023": "medium"
     },
     "execution_order": [
       [
@@ -822,6 +946,14 @@
       ],
       [
         "DEBT-019"
+      ],
+      [
+        "DEBT-020",
+        "DEBT-021"
+      ],
+      [
+        "DEBT-022",
+        "DEBT-023"
       ]
     ],
     "verification": {

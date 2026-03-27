@@ -4,29 +4,11 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-
-@dataclass(frozen=True)
-class ParsedDefinition:
-    name: str
-    kind: str
-    start_line: int
-    end_line: int
-    signature: str | None = None
-    exported: bool = True
-    excerpt: str | None = None
-
-
-@dataclass(frozen=True)
-class ParsedModule:
-    language: str
-    imports: list[str] = field(default_factory=list)
-    definitions: list[ParsedDefinition] = field(default_factory=list)
-    excerpt_blocks: list[str] = field(default_factory=list)
-    raw_excerpt: str = ""
+from .parser_types import ParsedDefinition, ParsedImport, ParsedModule
+from .optimizers.tree_sitter_adapter import TreeSitterAdapter
 
 
 class ParserBackend(Protocol):
@@ -38,7 +20,7 @@ class ParserBackend(Protocol):
 
 
 class PythonAstBackend:
-    language = "python"
+    language = "python-ast"
 
     def supports(self, path: Path) -> bool:
         return path.suffix == ".py"
@@ -46,13 +28,35 @@ class PythonAstBackend:
     def parse(self, path: Path, source: str) -> ParsedModule:
         tree = ast.parse(source, filename=str(path))
         imports: list[str] = []
+        import_entries: list[ParsedImport] = []
         definitions: list[ParsedDefinition] = []
         excerpt_blocks: list[str] = []
         for node in tree.body:
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if isinstance(node, ast.Import):
                 block = ast.get_source_segment(source, node) or ""
                 if block:
                     imports.append(block)
+                for alias in node.names:
+                    import_entries.append(
+                        ParsedImport(
+                            module=alias.name,
+                            alias=alias.asname or alias.name.split(".")[-1],
+                            statement=block or None,
+                        )
+                    )
+            elif isinstance(node, ast.ImportFrom):
+                block = ast.get_source_segment(source, node) or ""
+                if block:
+                    imports.append(block)
+                for alias in node.names:
+                    import_entries.append(
+                        ParsedImport(
+                            module=node.module or "",
+                            imported_name=alias.name,
+                            alias=alias.asname or alias.name,
+                            statement=block or None,
+                        )
+                    )
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 block = ast.get_source_segment(source, node)
                 definitions.append(
@@ -117,6 +121,7 @@ class PythonAstBackend:
         return ParsedModule(
             language=self.language,
             imports=imports,
+            import_entries=import_entries,
             definitions=definitions,
             excerpt_blocks=excerpt_blocks,
             raw_excerpt=source[:12000],
@@ -209,38 +214,16 @@ class TextBackend:
         return ParsedModule(language=self.language, raw_excerpt=source[:12000])
 
 
-class TreeSitterBackend:
-    """Optional backend placeholder for environments with tree-sitter installed."""
-
-    language = "tree-sitter"
-
-    def __init__(self) -> None:
-        self._available = False
-        try:
-            import tree_sitter  # noqa: F401
-        except Exception:
-            self._available = False
-        else:
-            self._available = True
-
-    def supports(self, path: Path) -> bool:
-        return self._available and path.suffix in {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"}
-
-    def parse(self, path: Path, source: str) -> ParsedModule:
-        del source
-        return ParsedModule(language=f"tree-sitter:{path.suffix.lstrip('.')}", raw_excerpt="")
-
-
 class ParserRegistry:
     """Selects the best available parser backend for a source file."""
 
     def __init__(self) -> None:
-        self.tree_sitter = TreeSitterBackend()
+        self.tree_sitter = TreeSitterAdapter()
         self.backends: list[ParserBackend] = [
             PythonAstBackend(),
-            RegexScriptBackend(language="typescript", suffixes=(".ts", ".tsx", ".js", ".jsx")),
-            RegexScriptBackend(language="go", suffixes=(".go",)),
-            RegexScriptBackend(language="rust", suffixes=(".rs",)),
+            RegexScriptBackend(language="typescript-regex", suffixes=(".ts", ".tsx", ".js", ".jsx")),
+            RegexScriptBackend(language="go-regex", suffixes=(".go",)),
+            RegexScriptBackend(language="rust-regex", suffixes=(".rs",)),
             TextBackend(),
         ]
 
@@ -248,7 +231,7 @@ class ParserRegistry:
         file_path = Path(path)
         if self.tree_sitter.supports(file_path):
             parsed = self.tree_sitter.parse(file_path, source)
-            if parsed.raw_excerpt or parsed.definitions or parsed.imports:
+            if parsed.definitions or parsed.import_entries or parsed.imports or parsed.has_errors:
                 return parsed
         for backend in self.backends:
             if backend.supports(file_path):
