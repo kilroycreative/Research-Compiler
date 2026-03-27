@@ -744,6 +744,63 @@
           "core/slicing.py",
           "tests/test_optimizer.py"
         ]
+      },
+      {
+        "id": "DEBT-024",
+        "title": "Add native filesystem monitor backends for hard real-time Andon enforcement",
+        "priority": "critical",
+        "primitive": "native-monitor",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Polling-based supervision leaves a window of vulnerability for unauthorized writes.",
+          "The monitor layer should prefer kernel-backed file event streams where the platform supports them."
+        ],
+        "scope": [
+          "Add Linux inotify and macOS FSEvents-backed monitor backends.",
+          "Keep watchfiles and polling as explicit fallback paths.",
+          "Route automatic backend selection through platform-aware monitor construction."
+        ],
+        "acceptance": [
+          "Linux runtimes can use an inotify-backed monitor backend when the dependency is installed.",
+          "macOS runtimes can use an FSEvents-backed backend when watchdog is available.",
+          "Fallback behavior remains deterministic when native hooks are unavailable."
+        ],
+        "files": [
+          "core/monitor_backends.py",
+          "core/__init__.py",
+          "tests/test_monitor_backends.py"
+        ]
+      },
+      {
+        "id": "DEBT-025",
+        "title": "Add remote sandbox providers for E2B and Modal behind the runtime adapter boundary",
+        "priority": "high",
+        "primitive": "remote-sandbox",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The factory should be able to target remote compute providers without changing the pipeline contract.",
+          "Provider-specific sandbox setup belongs behind RuntimeAdapter and provider abstractions."
+        ],
+        "scope": [
+          "Add a generic remote runtime adapter with provider lifecycle hooks.",
+          "Implement E2B and Modal provider integrations with optional SDK-backed creation and teardown.",
+          "Route new sandbox types through pipeline adapter resolution and cover them with tests."
+        ],
+        "acceptance": [
+          "The pipeline can resolve remote adapters for E2B and Modal sandbox types.",
+          "Remote providers report telemetry and compensate cleanly through the existing saga path.",
+          "Remote workspace bootstrap happens through a provider abstraction rather than bespoke pipeline logic."
+        ],
+        "files": [
+          "core/adapters/remote_compute.py",
+          "core/pipeline.py",
+          "core/ir.py",
+          "tests/test_runtime_adapters.py"
+        ]
       }
     ],
     "execution_order": [
@@ -793,6 +850,10 @@
       [
         "DEBT-022",
         "DEBT-023"
+      ],
+      [
+        "DEBT-024",
+        "DEBT-025"
       ]
     ]
   },
@@ -905,7 +966,9 @@
       "DEBT-020": "high",
       "DEBT-021": "high",
       "DEBT-022": "high",
-      "DEBT-023": "medium"
+      "DEBT-023": "medium",
+      "DEBT-024": "critical",
+      "DEBT-025": "high"
     },
     "execution_order": [
       [
@@ -954,6 +1017,10 @@
       [
         "DEBT-022",
         "DEBT-023"
+      ],
+      [
+        "DEBT-024",
+        "DEBT-025"
       ]
     ],
     "verification": {

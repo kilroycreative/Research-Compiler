@@ -1,7 +1,18 @@
 """Core runtime primitives for the compiler-oriented execution pipeline."""
 
 from .action_cache import ActionCache, CachedAction
-from .adapters import DockerRuntimeAdapter, HumanLayerRuntimeAdapter, LocalRuntimeAdapter, RuntimeAdapter, RuntimeSession
+from .adapters import (
+    DockerRuntimeAdapter,
+    E2BSandboxProvider,
+    GenericRemoteRuntimeAdapter,
+    HumanLayerRuntimeAdapter,
+    LocalRuntimeAdapter,
+    ModalSandboxProvider,
+    RemoteSandboxHandle,
+    RemoteSandboxProvider,
+    RuntimeAdapter,
+    RuntimeSession,
+)
 from .diagnostics import Diagnostic, SourceMapper, TaskSummaryWriter
 from .dispatcher import TieredDispatcher
 from .events import EventStore
@@ -36,7 +47,14 @@ from .ir import (
 )
 from .linker import Linker
 from .monitor import RuntimeMonitor, run_with_monitor
-from .monitor_backends import MonitorBackend, PollingMonitorBackend, WatchfilesMonitorBackend, build_monitor_backend
+from .monitor_backends import (
+    MacOSFSEventsMonitorBackend,
+    MonitorBackend,
+    NativeLinuxMonitorBackend,
+    PollingMonitorBackend,
+    WatchfilesMonitorBackend,
+    build_monitor_backend,
+)
 from .merge_queue import MergeQueue, QueueResult, QueueTask
 from .optimizer_cache import OptimizerCache
 from .optimizers.tree_sitter_adapter import LanguagePack, TreeSitterAdapter
@@ -57,8 +75,10 @@ from .worktree import WorktreeManager
 __all__ = [
     "ActionCache",
     "DockerRuntimeAdapter",
+    "E2BSandboxProvider",
     "Diagnostic",
     "CachedAction",
+    "GenericRemoteRuntimeAdapter",
     "BaseModelExecutor",
     "build_executor",
     "BudgetExceeded",
@@ -71,6 +91,7 @@ __all__ = [
     "ExecutionResult",
     "HumanLayerRuntimeAdapter",
     "LocalRuntimeAdapter",
+    "MacOSFSEventsMonitorBackend",
     "FailToPassContract",
     "FrontendIR",
     "LinkedSymbol",
@@ -95,6 +116,8 @@ __all__ = [
     "PipelineRunResult",
     "PassToPassContract",
     "PytestSelector",
+    "RemoteSandboxHandle",
+    "RemoteSandboxProvider",
     "PollingMonitorBackend",
     "QueueResult",
     "QueueTask",
@@ -106,6 +129,7 @@ __all__ = [
     "ResourceConstraints",
     "ResourceLimits",
     "SourceMapper",
+    "NativeLinuxMonitorBackend",
     "RuntimeMonitor",
     "RuntimeAdapter",
     "RuntimeSession",
@@ -125,6 +149,7 @@ __all__ = [
     "CostTracker",
     "TieredDispatcher",
     "TaskSummaryWriter",
+    "ModalSandboxProvider",
     "TreeSitterAdapter",
     "WatchfilesMonitorBackend",
     "WorktreeError",

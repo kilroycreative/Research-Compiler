@@ -6,8 +6,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core import DockerRuntimeAdapter, LocalRuntimeAdapter, PollingMonitorBackend, ResourceLimits, SandboxType, WorktreeManager
+from core import (
+    DockerRuntimeAdapter,
+    E2BSandboxProvider,
+    GenericRemoteRuntimeAdapter,
+    LocalRuntimeAdapter,
+    PollingMonitorBackend,
+    ResourceLimits,
+    SandboxType,
+    WorktreeManager,
+)
 from core.adapters.base import RuntimeEvent, RuntimeSession
+from core.adapters.remote_compute import RemoteSandboxHandle, RemoteSandboxProvider
 from core.ir import ExecutionPlan
 
 
@@ -51,6 +61,49 @@ class RuntimeAdapterTests(unittest.TestCase):
             session = asyncio.run(adapter.execute(self._plan(SandboxType.LOCAL)))
             self.assertEqual(adapter.telemetry(session)["monitor_backend"], "polling")
 
+    def test_remote_runtime_adapter_creates_provider_session_and_cleans_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".git").mkdir()
+            (repo / "sample_app.py").write_text("print('hi')\n", encoding="utf-8")
+            provider = FakeRemoteProvider()
+            manager = FakeWorktreeManager(repo)
+            adapter = GenericRemoteRuntimeAdapter(repo, provider=provider, worktree_manager=manager)
+
+            session = asyncio.run(adapter.execute(self._plan(SandboxType.E2B)))
+            self.assertEqual(session.cleanup_token, "sandbox-1")
+            self.assertEqual(session.telemetry["provider"], "fake-remote")
+            self.assertEqual(provider.upload_calls, 1)
+
+            asyncio.run(adapter.compensate(session))
+            self.assertEqual(provider.destroyed, ["sandbox-1"])
+            self.assertEqual(manager.cleaned, [session.workspace])
+
+    def test_remote_runtime_adapter_prefers_provider_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".git").mkdir()
+            provider = FakeRemoteProvider(events=[RuntimeEvent(path="sample_app.py", action="modified")])
+            adapter = GenericRemoteRuntimeAdapter(repo, provider=provider, worktree_manager=FakeWorktreeManager(repo))
+            session = asyncio.run(adapter.execute(self._plan(SandboxType.E2B)))
+
+            async def collect() -> list[RuntimeEvent]:
+                events: list[RuntimeEvent] = []
+                async for event in adapter.stream_events(session):
+                    events.append(event)
+                    break
+                return events
+
+            events = asyncio.run(collect())
+            self.assertEqual(events[0].path, "sample_app.py")
+            self.assertEqual(events[0].details["provider"], "fake-remote")
+
+    def test_e2b_provider_requires_sdk(self) -> None:
+        provider = E2BSandboxProvider()
+        provider._sandbox_class = None
+        with self.assertRaisesRegex(Exception, "e2b SDK not installed"):
+            asyncio.run(provider.create(plan=self._plan(SandboxType.E2B)))
+
     def _plan(self, sandbox_type: SandboxType) -> ExecutionPlan:
         return ExecutionPlan(
             task_id="task",
@@ -84,6 +137,34 @@ class FakeCompletedProcess:
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+
+
+class FakeRemoteProvider(RemoteSandboxProvider):
+    name = "fake-remote"
+
+    def __init__(self, events: list[RuntimeEvent] | None = None) -> None:
+        self.events = events or []
+        self.upload_calls = 0
+        self.destroyed: list[str] = []
+
+    async def create(self, *, plan: ExecutionPlan) -> RemoteSandboxHandle:
+        return RemoteSandboxHandle(provider=self.name, sandbox_id="sandbox-1", remote_root="/workspace", metadata={"task": plan.task_id})
+
+    async def destroy(self, handle: RemoteSandboxHandle) -> None:
+        self.destroyed.append(handle.sandbox_id)
+
+    async def run_shell(self, handle: RemoteSandboxHandle, script: str) -> None:
+        del handle, script
+
+    async def upload_workspace(self, handle: RemoteSandboxHandle, workspace: Path) -> dict[str, object]:
+        del handle, workspace
+        self.upload_calls += 1
+        return {"uploaded_files": 1, "uploaded_bytes": 12, "remote_root": "/workspace"}
+
+    async def stream_events(self, handle: RemoteSandboxHandle):
+        for event in self.events:
+            yield RuntimeEvent(path=event.path, action=event.action, details={"provider": self.name})
+            await asyncio.sleep(0)
 
 
 class StreamingLocalAdapter(LocalRuntimeAdapter):

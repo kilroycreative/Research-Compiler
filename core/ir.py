@@ -28,6 +28,8 @@ class SandboxType(StrEnum):
     CONTAINER = "container"
     FIREJAIL = "firejail"
     WORKTREE = "worktree"
+    E2B = "e2b"
+    MODAL = "modal"
 
 
 class ModelTier(StrEnum):

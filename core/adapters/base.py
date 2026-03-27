@@ -16,6 +16,7 @@ class RuntimeSession:
     workspace: Path
     telemetry: dict[str, Any] = field(default_factory=dict)
     cleanup_token: str | None = None
+    opaque_state: Any | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)

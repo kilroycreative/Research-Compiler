@@ -438,6 +438,18 @@ If those packages are unavailable, the compiler falls back to the existing regex
 
 ---
 
+## Runtime Hardening
+
+The runtime now supports additional hardening paths beyond local polling:
+
+- Linux-native file monitoring via `inotify_simple`
+- macOS FSEvents monitoring via `watchdog`
+- remote sandbox targets for `e2b` and `modal`
+
+The pipeline still applies and verifies patches against a deterministic local worktree mirror, but sandbox lifecycle, telemetry, and provider setup are now routed through provider-specific runtime adapters instead of ad hoc orchestration.
+
+---
+
 ## Design Principles
 
 - **Self-contained.** Copy the folder anywhere. No external imports or framework dependencies.

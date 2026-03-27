@@ -12,7 +12,15 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .action_cache import ActionCache
-from .adapters import DockerRuntimeAdapter, LocalRuntimeAdapter, RuntimeAdapter, RuntimeSession
+from .adapters import (
+    DockerRuntimeAdapter,
+    E2BSandboxProvider,
+    GenericRemoteRuntimeAdapter,
+    LocalRuntimeAdapter,
+    ModalSandboxProvider,
+    RuntimeAdapter,
+    RuntimeSession,
+)
 from .diagnostics import SourceMapper, TaskSummaryWriter
 from .events import EventStore
 from .execution_types import ExecutionResult
@@ -418,6 +426,18 @@ class Pipeline:
             return self.runtime_adapter
         if plan.sandbox_type == SandboxType.CONTAINER:
             return DockerRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
+        if plan.sandbox_type == SandboxType.E2B:
+            return GenericRemoteRuntimeAdapter(
+                repo_root,
+                provider=E2BSandboxProvider(),
+                worktree_manager=self.worktree_manager,
+            )
+        if plan.sandbox_type == SandboxType.MODAL:
+            return GenericRemoteRuntimeAdapter(
+                repo_root,
+                provider=ModalSandboxProvider(),
+                worktree_manager=self.worktree_manager,
+            )
         return LocalRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
 
     def _reverse_patch(self, repo_root: Path, patch: str) -> None:
