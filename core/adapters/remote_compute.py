@@ -14,6 +14,7 @@ from typing import Any
 from ..exceptions import PipelineFailure
 from ..ir import ExecutionPlan
 from ..monitor_backends import MonitorBackend, build_monitor_backend
+from ..verifier import CommandResult, VerificationRunner
 from ..worktree import WorktreeManager
 from .base import RuntimeAdapter, RuntimeEvent, RuntimeSession
 
@@ -39,7 +40,7 @@ class RemoteSandboxProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def run_shell(self, handle: RemoteSandboxHandle, script: str) -> None:
+    async def run_command(self, handle: RemoteSandboxHandle, command: list[str], cwd: str) -> CommandResult:
         raise NotImplementedError
 
     async def upload_workspace(self, handle: RemoteSandboxHandle, workspace: Path) -> dict[str, Any]:
@@ -62,10 +63,31 @@ class RemoteSandboxProvider(ABC):
                     "PY",
                 ]
             )
-            await self.run_shell(handle, script)
+            await self.run_command(handle, ["bash", "-lc", script], cwd=handle.remote_root)
             file_count += 1
             byte_count += path.stat().st_size
         return {"uploaded_files": file_count, "uploaded_bytes": byte_count, "remote_root": handle.remote_root}
+
+    async def download_files(self, handle: RemoteSandboxHandle, workspace: Path, paths: list[str]) -> None:
+        for rel_path in paths:
+            remote_path = f"{handle.remote_root.rstrip('/')}/{rel_path}"
+            script = "\n".join(
+                [
+                    "python3 - <<'PY'",
+                    "import base64",
+                    "from pathlib import Path",
+                    f"target = Path({remote_path!r})",
+                    "if target.exists():",
+                    "    print(base64.b64encode(target.read_bytes()).decode('ascii'))",
+                    "PY",
+                ]
+            )
+            result = await self.run_command(handle, ["bash", "-lc", script], cwd=handle.remote_root)
+            if result.exit_code != 0 or not result.stdout.strip():
+                continue
+            local_path = workspace / rel_path
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(base64.b64decode(result.stdout.strip()))
 
     async def stream_events(self, handle: RemoteSandboxHandle) -> AsyncIterator[RuntimeEvent]:
         del handle
@@ -141,6 +163,84 @@ class GenericRemoteRuntimeAdapter(RuntimeAdapter):
     def telemetry(self, session: RuntimeSession) -> dict[str, object]:
         return dict(session.telemetry)
 
+    async def apply_patch(self, session: RuntimeSession, patch: str) -> None:
+        handle = session.opaque_state
+        if handle is None or not patch.strip():
+            return
+        payload = base64.b64encode(patch.encode("utf-8")).decode("ascii")
+        script = "\n".join(
+            [
+                "python3 - <<'PY'",
+                "import base64, subprocess",
+                f"patch = base64.b64decode({payload!r}).decode('utf-8')",
+                "result = subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], input=patch, text=True, capture_output=True)",
+                "print(result.stdout, end='')",
+                "print(result.stderr, end='') if result.returncode else None",
+                "raise SystemExit(result.returncode)",
+                "PY",
+            ]
+        )
+        result = await self.provider.run_command(handle, ["bash", "-lc", script], cwd=handle.remote_root)
+        if result.exit_code != 0:
+            raise PipelineFailure(result.stderr.strip() or result.stdout.strip() or "failed to apply patch in remote sandbox")
+
+    async def reverse_patch(self, session: RuntimeSession, patch: str) -> None:
+        handle = session.opaque_state
+        if handle is None or not patch.strip():
+            return
+        payload = base64.b64encode(patch.encode("utf-8")).decode("ascii")
+        script = "\n".join(
+            [
+                "python3 - <<'PY'",
+                "import base64, subprocess",
+                f"patch = base64.b64decode({payload!r}).decode('utf-8')",
+                "result = subprocess.run(['git', 'apply', '--reverse', '--whitespace=nowarn', '-'], input=patch, text=True, capture_output=True)",
+                "print(result.stdout, end='')",
+                "print(result.stderr, end='') if result.returncode else None",
+                "raise SystemExit(result.returncode)",
+                "PY",
+            ]
+        )
+        result = await self.provider.run_command(handle, ["bash", "-lc", script], cwd=handle.remote_root)
+        if result.exit_code != 0:
+            raise PipelineFailure(result.stderr.strip() or result.stdout.strip() or "failed to reverse patch in remote sandbox")
+
+    async def run_pre_patch_verification(
+        self,
+        session: RuntimeSession,
+        verifier: VerificationRunner,
+        plan: ExecutionPlan,
+    ):
+        handle = session.opaque_state
+        if handle is None:
+            return await super().run_pre_patch_verification(session, verifier, plan)
+        return await verifier.run_pre_patch_async(
+            plan,
+            handle.remote_root,
+            command_runner=lambda command, cwd: self.provider.run_command(handle, command, str(cwd)),
+        )
+
+    async def run_post_patch_verification(
+        self,
+        session: RuntimeSession,
+        verifier: VerificationRunner,
+        plan: ExecutionPlan,
+    ):
+        handle = session.opaque_state
+        if handle is None:
+            return await super().run_post_patch_verification(session, verifier, plan)
+        return await verifier.run_post_patch_async(
+            plan,
+            handle.remote_root,
+            command_runner=lambda command, cwd: self.provider.run_command(handle, command, str(cwd)),
+        )
+
+    async def sync_back_to_local(self, session: RuntimeSession, local_workspace: Path, file_paths: list[str]) -> None:
+        handle = session.opaque_state
+        if handle is None:
+            return
+        await self.provider.download_files(handle, local_workspace, file_paths)
+
 
 class E2BSandboxProvider(RemoteSandboxProvider):
     name = "e2b"
@@ -180,20 +280,25 @@ class E2BSandboxProvider(RemoteSandboxProvider):
                 await asyncio.to_thread(method)
                 return
 
-    async def run_shell(self, handle: RemoteSandboxHandle, script: str) -> None:
+    async def run_command(self, handle: RemoteSandboxHandle, command: list[str], cwd: str) -> CommandResult:
         sandbox = handle.raw
         commands = getattr(sandbox, "commands", None)
         if commands is None or not hasattr(commands, "run"):
             raise PipelineFailure("e2b sandbox does not expose commands.run")
 
         def _run():
-            return commands.run(f"bash -lc {shlex.quote(script)}")
+            if len(command) == 3 and command[:2] == ["bash", "-lc"]:
+                return commands.run(command[2], cwd=cwd)
+            return commands.run(" ".join(shlex.quote(part) for part in command), cwd=cwd)
 
         result = await asyncio.to_thread(_run)
         exit_code = getattr(result, "exit_code", 0)
-        if exit_code not in (0, None):
-            stderr = getattr(result, "stderr", "")
-            raise PipelineFailure(stderr.strip() or "remote e2b shell command failed")
+        return CommandResult(
+            command=command,
+            exit_code=0 if exit_code is None else int(exit_code),
+            stdout=getattr(result, "stdout", "") or "",
+            stderr=getattr(result, "stderr", "") or "",
+        )
 
 
 class ModalSandboxProvider(RemoteSandboxProvider):
@@ -243,14 +348,14 @@ class ModalSandboxProvider(RemoteSandboxProvider):
                     continue
                 return
 
-    async def run_shell(self, handle: RemoteSandboxHandle, script: str) -> None:
+    async def run_command(self, handle: RemoteSandboxHandle, command: list[str], cwd: str) -> CommandResult:
         sandbox = handle.raw
         exec_method = getattr(sandbox, "exec", None)
         if not callable(exec_method):
             raise PipelineFailure("modal sandbox does not expose exec")
 
         def _run():
-            process = exec_method("bash", "-lc", script)
+            process = exec_method(*command, workdir=cwd)
             wait = getattr(process, "wait", None)
             if callable(wait):
                 wait()
@@ -258,8 +363,35 @@ class ModalSandboxProvider(RemoteSandboxProvider):
 
         process = await asyncio.to_thread(_run)
         returncode = getattr(process, "returncode", 0)
-        if returncode not in (0, None):
-            stderr = getattr(process, "stderr", b"")
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", errors="ignore")
-            raise PipelineFailure(str(stderr).strip() or "remote modal shell command failed")
+        stdout = getattr(process, "stdout", b"")
+        stderr = getattr(process, "stderr", b"")
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="ignore")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="ignore")
+        return CommandResult(
+            command=command,
+            exit_code=0 if returncode is None else int(returncode),
+            stdout=str(stdout),
+            stderr=str(stderr),
+        )
+
+
+class E2BRuntimeAdapter(GenericRemoteRuntimeAdapter):
+    def __init__(self, repo_root: str | Path, *, worktree_manager: WorktreeManager | None = None, fallback_monitor_backend: MonitorBackend | None = None) -> None:
+        super().__init__(
+            repo_root,
+            provider=E2BSandboxProvider(),
+            worktree_manager=worktree_manager,
+            fallback_monitor_backend=fallback_monitor_backend,
+        )
+
+
+class ModalRuntimeAdapter(GenericRemoteRuntimeAdapter):
+    def __init__(self, repo_root: str | Path, *, worktree_manager: WorktreeManager | None = None, fallback_monitor_backend: MonitorBackend | None = None) -> None:
+        super().__init__(
+            repo_root,
+            provider=ModalSandboxProvider(),
+            worktree_manager=worktree_manager,
+            fallback_monitor_backend=fallback_monitor_backend,
+        )

@@ -14,10 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from .action_cache import ActionCache
 from .adapters import (
     DockerRuntimeAdapter,
-    E2BSandboxProvider,
-    GenericRemoteRuntimeAdapter,
+    E2BRuntimeAdapter,
     LocalRuntimeAdapter,
-    ModalSandboxProvider,
+    ModalRuntimeAdapter,
     RuntimeAdapter,
     RuntimeSession,
 )
@@ -278,8 +277,7 @@ class Pipeline:
                 "events": events,
             }
 
-        pre_patch = self.verifier.run_pre_patch(middle, repo_root)
-        events.append(self.event_store.append("verification_pre_patch", {"count": len(pre_patch), "cache_key": cache_key}))
+        pre_patch = None
 
         saga = Saga()
         dispatcher = self.executor if hasattr(self.executor, "next_attempt_plan") else None
@@ -309,6 +307,11 @@ class Pipeline:
                 )
 
                 monitor = self.runtime_monitor or RuntimeMonitor(watcher)
+                if pre_patch is None:
+                    pre_patch = await runtime_adapter.run_pre_patch_verification(runtime_session, self.verifier, middle)
+                    events.append(
+                        self.event_store.append("verification_pre_patch", {"count": len(pre_patch), "cache_key": cache_key})
+                    )
 
                 async def on_runtime_event(event) -> None:
                     events.append(
@@ -327,12 +330,13 @@ class Pipeline:
                 )
                 touched_files = result.touched_files or self._extract_patch_paths(result.patch)
                 watcher.validate_paths(touched_files)
-                self.vcs_adapter.apply_patch(workspace, result.patch)
+                await runtime_adapter.apply_patch(runtime_session, result.patch)
                 total_cost += float(result.metadata.get("cost_usd", 0.0))
                 try:
-                    post_patch = self.verifier.run_post_patch(middle, workspace)
+                    post_patch = await runtime_adapter.run_post_patch_verification(runtime_session, self.verifier, middle)
                     verification = self.verifier.summarize(pre_patch=pre_patch, post_patch=post_patch)
                 except VerificationFailure:
+                    await runtime_adapter.reverse_patch(runtime_session, result.patch)
                     self.vcs_adapter.revert_to_stable(stable_point)
                     await runtime_adapter.compensate(runtime_session)
                     next_plan = (
@@ -357,6 +361,8 @@ class Pipeline:
                     attempt_plan = next_plan
                     continue
 
+                await runtime_adapter.sync_back_to_local(runtime_session, workspace, touched_files)
+                self.vcs_adapter.apply_patch(workspace, result.patch)
                 self.action_cache.put(frontend_ir, middle.constitution, patch=result.patch, verification_summary=verification)
                 events.append(
                     self.event_store.append(
@@ -427,17 +433,9 @@ class Pipeline:
         if plan.sandbox_type == SandboxType.CONTAINER:
             return DockerRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
         if plan.sandbox_type == SandboxType.E2B:
-            return GenericRemoteRuntimeAdapter(
-                repo_root,
-                provider=E2BSandboxProvider(),
-                worktree_manager=self.worktree_manager,
-            )
+            return E2BRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
         if plan.sandbox_type == SandboxType.MODAL:
-            return GenericRemoteRuntimeAdapter(
-                repo_root,
-                provider=ModalSandboxProvider(),
-                worktree_manager=self.worktree_manager,
-            )
+            return ModalRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
         return LocalRuntimeAdapter(repo_root, worktree_manager=self.worktree_manager)
 
     def _reverse_patch(self, repo_root: Path, patch: str) -> None:

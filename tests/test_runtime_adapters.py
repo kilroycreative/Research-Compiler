@@ -18,6 +18,7 @@ from core import (
 )
 from core.adapters.base import RuntimeEvent, RuntimeSession
 from core.adapters.remote_compute import RemoteSandboxHandle, RemoteSandboxProvider
+from core.verifier import CommandResult, VerificationRunner
 from core.ir import ExecutionPlan
 
 
@@ -98,6 +99,30 @@ class RuntimeAdapterTests(unittest.TestCase):
             self.assertEqual(events[0].path, "sample_app.py")
             self.assertEqual(events[0].details["provider"], "fake-remote")
 
+    def test_remote_runtime_adapter_runs_verification_and_syncs_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".git").mkdir()
+            workspace = repo / "task-workspace"
+            workspace.mkdir()
+            (workspace / "sample_app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+            provider = FakeRemoteProvider(file_map={"sample_app.py": "def value():\n    return 2\n"})
+            adapter = GenericRemoteRuntimeAdapter(repo, provider=provider, worktree_manager=FakeWorktreeManager(repo))
+            session = asyncio.run(adapter.execute(self._plan(SandboxType.E2B)))
+            verifier = VerificationRunner()
+            plan = self._plan(SandboxType.E2B)
+
+            asyncio.run(adapter.apply_patch(session, SAMPLE_PATCH))
+            pre = asyncio.run(adapter.run_pre_patch_verification(session, verifier, plan))
+            post = asyncio.run(adapter.run_post_patch_verification(session, verifier, plan))
+            asyncio.run(adapter.sync_back_to_local(session, session.workspace, ["sample_app.py"]))
+
+            self.assertEqual(len(pre), 0)
+            self.assertEqual(len(post), 1)
+            self.assertIn("subprocess.run(['git', 'apply'", " ".join(provider.command_log[0]))
+            self.assertIn("pytest", " ".join(provider.command_log[1]))
+            self.assertIn("return 2", (session.workspace / "sample_app.py").read_text(encoding="utf-8"))
+
     def test_e2b_provider_requires_sdk(self) -> None:
         provider = E2BSandboxProvider()
         provider._sandbox_class = None
@@ -142,10 +167,12 @@ class FakeCompletedProcess:
 class FakeRemoteProvider(RemoteSandboxProvider):
     name = "fake-remote"
 
-    def __init__(self, events: list[RuntimeEvent] | None = None) -> None:
+    def __init__(self, events: list[RuntimeEvent] | None = None, file_map: dict[str, str] | None = None) -> None:
         self.events = events or []
+        self.file_map = file_map or {}
         self.upload_calls = 0
         self.destroyed: list[str] = []
+        self.command_log: list[list[str]] = []
 
     async def create(self, *, plan: ExecutionPlan) -> RemoteSandboxHandle:
         return RemoteSandboxHandle(provider=self.name, sandbox_id="sandbox-1", remote_root="/workspace", metadata={"task": plan.task_id})
@@ -153,8 +180,20 @@ class FakeRemoteProvider(RemoteSandboxProvider):
     async def destroy(self, handle: RemoteSandboxHandle) -> None:
         self.destroyed.append(handle.sandbox_id)
 
-    async def run_shell(self, handle: RemoteSandboxHandle, script: str) -> None:
-        del handle, script
+    async def run_command(self, handle: RemoteSandboxHandle, command: list[str], cwd: str) -> CommandResult:
+        del handle, cwd
+        self.command_log.append(command)
+        joined = " ".join(command)
+        if "git apply" in joined:
+            return CommandResult(command=command, exit_code=0, stdout="", stderr="")
+        if command[:1] == ["pytest"]:
+            return CommandResult(command=command, exit_code=0, stdout="ok", stderr="")
+        if "base64.b64encode" in joined and self.file_map:
+            encoded = next(iter(self.file_map.values())).encode("utf-8")
+            import base64
+
+            return CommandResult(command=command, exit_code=0, stdout=base64.b64encode(encoded).decode("ascii"), stderr="")
+        return CommandResult(command=command, exit_code=0, stdout="", stderr="")
 
     async def upload_workspace(self, handle: RemoteSandboxHandle, workspace: Path) -> dict[str, object]:
         del handle, workspace
@@ -165,6 +204,17 @@ class FakeRemoteProvider(RemoteSandboxProvider):
         for event in self.events:
             yield RuntimeEvent(path=event.path, action=event.action, details={"provider": self.name})
             await asyncio.sleep(0)
+
+
+SAMPLE_PATCH = """diff --git a/sample_app.py b/sample_app.py
+index 1c02a8f..75db990 100644
+--- a/sample_app.py
++++ b/sample_app.py
+@@ -1,2 +1,2 @@
+ def value():
+-    return 1
++    return 2
+"""
 
 
 class StreamingLocalAdapter(LocalRuntimeAdapter):

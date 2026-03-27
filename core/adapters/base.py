@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..exceptions import PipelineFailure
 from ..ir import ExecutionPlan
+from ..verifier import VerificationRunner
 
 
 @dataclass(frozen=True)
@@ -45,3 +49,47 @@ class RuntimeAdapter(ABC):
     @abstractmethod
     def telemetry(self, session: RuntimeSession) -> dict[str, Any]:
         raise NotImplementedError
+
+    async def apply_patch(self, session: RuntimeSession, patch: str) -> None:
+        await asyncio.to_thread(_git_apply, session.workspace, patch, reverse=False)
+
+    async def reverse_patch(self, session: RuntimeSession, patch: str) -> None:
+        await asyncio.to_thread(_git_apply, session.workspace, patch, reverse=True)
+
+    async def run_pre_patch_verification(
+        self,
+        session: RuntimeSession,
+        verifier: VerificationRunner,
+        plan: ExecutionPlan,
+    ):
+        return await asyncio.to_thread(verifier.run_pre_patch, plan, session.workspace)
+
+    async def run_post_patch_verification(
+        self,
+        session: RuntimeSession,
+        verifier: VerificationRunner,
+        plan: ExecutionPlan,
+    ):
+        return await asyncio.to_thread(verifier.run_post_patch, plan, session.workspace)
+
+    async def sync_back_to_local(self, session: RuntimeSession, local_workspace: Path, file_paths: list[str]) -> None:
+        del session, local_workspace, file_paths
+
+
+def _git_apply(workspace: Path, patch: str, *, reverse: bool) -> None:
+    if not patch.strip():
+        return
+    command = ["git", "apply", "--whitespace=nowarn"]
+    if reverse:
+        command.append("--reverse")
+    command.append("-")
+    process = subprocess.run(
+        command,
+        cwd=workspace,
+        input=patch,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if process.returncode != 0:
+        raise PipelineFailure(process.stderr.strip() or "failed to apply runtime patch")

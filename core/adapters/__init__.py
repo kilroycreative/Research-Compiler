@@ -6,8 +6,10 @@ from .humanlayer import HumanLayerRuntimeAdapter
 from .local import LocalRuntimeAdapter
 from .remote_compute import (
     E2BSandboxProvider,
+    E2BRuntimeAdapter,
     GenericRemoteRuntimeAdapter,
     ModalSandboxProvider,
+    ModalRuntimeAdapter,
     RemoteSandboxHandle,
     RemoteSandboxProvider,
 )
@@ -23,5 +25,7 @@ __all__ = [
     "RemoteSandboxProvider",
     "GenericRemoteRuntimeAdapter",
     "E2BSandboxProvider",
+    "E2BRuntimeAdapter",
     "ModalSandboxProvider",
+    "ModalRuntimeAdapter",
 ]

@@ -28,8 +28,11 @@ from core import (
 )
 from core.adapters.base import RuntimeEvent, RuntimeSession
 from core.adapters.local import LocalRuntimeAdapter
+from core.adapters.remote_compute import GenericRemoteRuntimeAdapter, RemoteSandboxHandle, RemoteSandboxProvider
 from core.worktree import WorktreeManager
 from core.pipeline import ExecutionResult
+from core.verifier import CommandResult
+from core.ir import ExecutionPlan
 
 
 class FakeExecutor:
@@ -90,6 +93,38 @@ class FixedPatchExecutor:
             touched_files=["sample_app.py"] if self.patch else [],
             metadata={"prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens},
         )
+
+
+class PipelineRemoteProvider(RemoteSandboxProvider):
+    name = "pipeline-remote"
+
+    def __init__(self) -> None:
+        self.pytest_calls = 0
+        self.remote_file = "def value():\n    return 2\n"
+
+    async def create(self, *, plan: ExecutionPlan) -> RemoteSandboxHandle:
+        return RemoteSandboxHandle(provider=self.name, sandbox_id="sandbox-1", remote_root="/workspace")
+
+    async def destroy(self, handle: RemoteSandboxHandle) -> None:
+        del handle
+
+    async def run_command(self, handle: RemoteSandboxHandle, command: list[str], cwd: str) -> CommandResult:
+        del handle, cwd
+        joined = " ".join(command)
+        if "pytest" in joined:
+            self.pytest_calls += 1
+            exit_code = 1 if self.pytest_calls == 1 else 0
+            return CommandResult(command=command, exit_code=exit_code, stdout="", stderr="")
+        if "base64.b64encode" in joined:
+            import base64
+
+            return CommandResult(
+                command=command,
+                exit_code=0,
+                stdout=base64.b64encode(self.remote_file.encode("utf-8")).decode("ascii"),
+                stderr="",
+            )
+        return CommandResult(command=command, exit_code=0, stdout="", stderr="")
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -406,6 +441,61 @@ index 1c02a8f..75db990 100644
             self.assertIn("return 1", current)
             head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
             self.assertEqual(head, base_commit)
+
+    async def test_pipeline_verifies_remote_before_local_reconciliation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._init_repo(Path(tmp))
+            self._write_pytest_test(
+                repo,
+                """
+from sample_app import value
+
+def test_bug():
+    assert value() == 2
+""".strip()
+                + "\n",
+            )
+            base_commit = self._commit_all(repo, "initial")
+            provider = PipelineRemoteProvider()
+            runtime_adapter = GenericRemoteRuntimeAdapter(
+                repo,
+                provider=provider,
+                worktree_manager=FakeWorktreeManager(repo),
+            )
+            patch = """diff --git a/sample_app.py b/sample_app.py
+index 1c02a8f..75db990 100644
+--- a/sample_app.py
++++ b/sample_app.py
+@@ -1,2 +1,2 @@
+ def value():
+-    return 1
++    return 2
+"""
+            pipeline = Pipeline(
+                executor=FakeExecutor(patch=patch, touched_files=["sample_app.py"]),
+                action_cache=ActionCache(repo / "action_cache.db"),
+                verifier=VerificationRunner(),
+                event_store=EventStore(repo / "events.jsonl"),
+                runtime_adapter=runtime_adapter,
+            )
+            request = PipelineRequest(
+                task_id="remote-bugfix",
+                base_commit=base_commit,
+                authorized_files=["sample_app.py"],
+                constitution="Keep fix scoped",
+                verification_contracts=[
+                    {"kind": "fail_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                    {"kind": "pass_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                ],
+                model_id="gpt-5.4",
+                repo_root=str(repo),
+                sandbox_type=SandboxType.E2B,
+            )
+            result = await pipeline.run(request)
+            self.assertFalse(result.cache_hit)
+            self.assertEqual(provider.pytest_calls, 2)
+            current = (repo / "remote-bugfix-workspace" / "sample_app.py").read_text(encoding="utf-8")
+            self.assertIn("return 2", current)
 
     def _init_repo(self, root: Path) -> Path:
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)

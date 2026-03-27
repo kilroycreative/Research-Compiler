@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Awaitable, Protocol
 
 from .exceptions import VerificationFailure
 from .ir import (
@@ -21,6 +22,18 @@ from .ir import (
 
 class MetricsProvider(Protocol):
     def __call__(self, metric_name: str, repo_root: Path) -> float: ...
+
+
+class AsyncCommandRunner(Protocol):
+    def __call__(self, command: list[str], cwd: str | Path) -> Awaitable["CommandResult"]: ...
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    command: list[str]
+    exit_code: int
+    stdout: str
+    stderr: str
 
 
 @dataclass(frozen=True)
@@ -69,6 +82,36 @@ class VerificationRunner:
                 evidence.append(self._run_metric(contract, repo_path))
         return evidence
 
+    async def run_pre_patch_async(
+        self,
+        ir: MiddleEndIR,
+        repo_root: str | Path,
+        *,
+        command_runner: AsyncCommandRunner,
+    ) -> list[VerificationEvidence]:
+        evidence: list[VerificationEvidence] = []
+        repo_path = Path(str(repo_root))
+        for contract in ir.verification_contracts:
+            if isinstance(contract, FailToPassContract):
+                evidence.extend(await self._run_fail_to_pass_async(contract, repo_path, command_runner))
+        return evidence
+
+    async def run_post_patch_async(
+        self,
+        ir: MiddleEndIR,
+        repo_root: str | Path,
+        *,
+        command_runner: AsyncCommandRunner,
+    ) -> list[VerificationEvidence]:
+        evidence: list[VerificationEvidence] = []
+        repo_path = Path(str(repo_root))
+        for contract in ir.verification_contracts:
+            if isinstance(contract, PassToPassContract):
+                evidence.extend(await self._run_pass_to_pass_async(contract, repo_path, command_runner))
+            elif isinstance(contract, MetricThresholdContract):
+                evidence.append(self._run_metric(contract, repo_path))
+        return evidence
+
     def summarize(
         self,
         *,
@@ -92,6 +135,22 @@ class VerificationRunner:
             evidence.append(result)
         return evidence
 
+    async def _run_fail_to_pass_async(
+        self,
+        contract: FailToPassContract,
+        repo_root: Path,
+        command_runner: AsyncCommandRunner,
+    ) -> list[VerificationEvidence]:
+        evidence: list[VerificationEvidence] = []
+        for selector in contract.selectors:
+            result = await self._run_pytest_async(selector.selector, repo_root, command_runner)
+            if result.exit_code == 0:
+                raise VerificationFailure(
+                    f"fail-to-pass selector unexpectedly passed before patch: {selector.selector}"
+                )
+            evidence.append(result)
+        return evidence
+
     def _run_pass_to_pass(self, contract: PassToPassContract, repo_root: Path) -> list[VerificationEvidence]:
         evidence: list[VerificationEvidence] = []
         for selector in contract.selectors:
@@ -99,6 +158,26 @@ class VerificationRunner:
             last_result: VerificationEvidence | None = None
             for _ in range(retries):
                 last_result = self._run_pytest(selector.selector, repo_root)
+                if last_result.exit_code == 0:
+                    break
+            assert last_result is not None
+            if last_result.exit_code != 0:
+                raise VerificationFailure(f"pass-to-pass selector failed after patch: {selector.selector}")
+            evidence.append(last_result)
+        return evidence
+
+    async def _run_pass_to_pass_async(
+        self,
+        contract: PassToPassContract,
+        repo_root: Path,
+        command_runner: AsyncCommandRunner,
+    ) -> list[VerificationEvidence]:
+        evidence: list[VerificationEvidence] = []
+        for selector in contract.selectors:
+            retries = contract.allow_flaky_retries + 1
+            last_result: VerificationEvidence | None = None
+            for _ in range(retries):
+                last_result = await self._run_pytest_async(selector.selector, repo_root, command_runner)
                 if last_result.exit_code == 0:
                     break
             assert last_result is not None
@@ -141,6 +220,25 @@ class VerificationRunner:
             selector=selector,
             command=command,
             exit_code=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+
+    async def _run_pytest_async(
+        self,
+        selector: str,
+        repo_root: Path,
+        command_runner: AsyncCommandRunner,
+    ) -> VerificationEvidence:
+        pytest_binary = shutil.which("pytest") or "pytest"
+        command = [pytest_binary, selector]
+        result = await command_runner(command, repo_root)
+        return VerificationEvidence(
+            stage="pre_or_post_patch",
+            contract_kind="pytest",
+            selector=selector,
+            command=result.command,
+            exit_code=result.exit_code,
             stdout=result.stdout,
             stderr=result.stderr,
         )
