@@ -17,3 +17,7 @@ class SecurityViolation(PipelineFailure):
 
 class WorktreeError(PipelineFailure):
     """Raised when worktree orchestration fails."""
+
+
+class BudgetExceeded(PipelineFailure):
+    """Raised when model execution exceeds token or cost budgets."""

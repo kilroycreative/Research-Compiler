@@ -30,6 +30,11 @@ class SandboxType(StrEnum):
     WORKTREE = "worktree"
 
 
+class ModelTier(StrEnum):
+    DRAFT = "draft"
+    PRODUCTION = "production"
+
+
 class PytestSelector(StrictModel):
     selector: str = Field(min_length=1)
     description: str | None = None
@@ -87,6 +92,9 @@ class FrontendIR(StrictModel):
 class MiddleEndIR(FrontendIR):
     verification_contracts: list[VerificationContract] = Field(min_length=1)
     constitution: str = Field(min_length=1, description="Task-specific CLAUDE.md or equivalent context")
+    symbol_table: list["SymbolDefinition"] = Field(default_factory=list)
+    linker_map: list["LinkedSymbol"] = Field(default_factory=list)
+    context_slices: list["ContextSlice"] = Field(default_factory=list)
 
 
 class ResourceLimits(StrictModel):
@@ -96,7 +104,43 @@ class ResourceLimits(StrictModel):
     max_patch_bytes: int = Field(default=1_000_000, gt=0)
 
 
+class ResourceConstraints(StrictModel):
+    model_tier: ModelTier = ModelTier.PRODUCTION
+    max_input_tokens: int | None = Field(default=16_000, gt=0)
+    max_output_tokens: int | None = Field(default=8_000, gt=0)
+    max_cost_usd: float | None = Field(default=5.0, gt=0)
+    allow_escalation: bool = True
+    max_attempts: int = Field(default=2, ge=1, le=2)
+
+
 class ExecutionPlan(MiddleEndIR):
     model_id: str = Field(min_length=1)
     sandbox_type: SandboxType
     resource_limits: ResourceLimits
+    resource_constraints: ResourceConstraints = Field(default_factory=ResourceConstraints)
+
+
+class SymbolDefinition(StrictModel):
+    name: str = Field(min_length=1)
+    kind: Literal["function", "class", "method", "assignment", "import"]
+    file_path: str = Field(min_length=1)
+    start_line: int = Field(gt=0)
+    end_line: int = Field(gt=0)
+    signature: str | None = None
+    exported: bool = True
+
+
+class LinkedSymbol(StrictModel):
+    symbol_name: str = Field(min_length=1)
+    file_path: str = Field(min_length=1)
+    source_module: str | None = None
+    resolved_file_path: str | None = None
+    resolved_symbol_name: str | None = None
+
+
+class ContextSlice(StrictModel):
+    file_path: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    imports: list[str] = Field(default_factory=list)
+    symbols: list[str] = Field(default_factory=list)
+    excerpt: str = Field(min_length=1)

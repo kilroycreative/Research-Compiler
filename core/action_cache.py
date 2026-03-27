@@ -55,6 +55,7 @@ class ActionCache:
         return sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
     def get(self, action_key: str) -> CachedAction | None:
+        self._initialize()
         with self._connect() as connection:
             row = connection.execute(
                 """
@@ -86,6 +87,7 @@ class ActionCache:
         patch: str,
         verification_summary: dict[str, Any],
     ) -> str:
+        self._initialize()
         action_key = self.compute_action_key(frontend_ir, constitution)
         created_at = datetime.now(UTC).isoformat()
         with self._connect() as connection:

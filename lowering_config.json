@@ -288,6 +288,207 @@
           "README.md",
           "tests/test_runtime.py"
         ]
+      },
+      {
+        "id": "DEBT-008",
+        "title": "Implement middle-end optimizer with symbol table, linker map, and context pruning",
+        "priority": "high",
+        "primitive": "optimizer",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The current executor prompt still degrades toward whole-file context when no optimizer pass is present.",
+          "A compiler-quality middle-end should reduce noise before execution."
+        ],
+        "scope": [
+          "Index symbols in authorized files.",
+          "Build linker metadata for imports and locally-resolved definitions.",
+          "Lower optimized context slices into the execution plan and prompt compiler."
+        ],
+        "acceptance": [
+          "MiddleEndIR carries symbol table, linker map, and context slices.",
+          "Pipeline includes an explicit optimization pass.",
+          "Executor prompts prefer slices over raw file snapshots."
+        ],
+        "files": [
+          "core/symbols.py",
+          "core/linker.py",
+          "core/slicing.py",
+          "core/ir.py",
+          "core/pipeline.py",
+          "core/executors.py"
+        ]
+      },
+      {
+        "id": "DEBT-009",
+        "title": "Add lowering-cache persistence for symbol analysis and sliced context",
+        "priority": "medium",
+        "primitive": "optimizer-cache",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Symbol discovery and context slicing are deterministic compiler work products.",
+          "They should be cached independently from final patch output."
+        ],
+        "scope": [
+          "Persist symbol table and context slice artifacts keyed by repo state and authorized file set.",
+          "Allow pipeline reuse without reparsing unchanged files.",
+          "Emit cache hit and miss events for optimizer stages."
+        ],
+        "acceptance": [
+          "Optimizer artifacts survive process restarts.",
+          "Cache invalidates when source spans change.",
+          "Pipeline can replay lowered analysis without recomputing it."
+        ],
+        "files": [
+          "core/optimizer_cache.py",
+          "core/pipeline.py",
+          "tests/test_optimizer.py"
+        ]
+      },
+      {
+        "id": "DEBT-010",
+        "title": "Implement runtime adapter base and provider-backed compute isolation",
+        "priority": "high",
+        "primitive": "compute-adapter",
+        "package": "core",
+        "effort": "L",
+        "status": "DONE",
+        "ground_truth": [
+          "Worktree-only execution is not a production isolation boundary.",
+          "The runtime needs a provider abstraction for ephemeral compute."
+        ],
+        "scope": [
+          "Define a RuntimeAdapter base with execute, compensate, and telemetry methods.",
+          "Add a Docker-backed compute adapter as the first provider implementation.",
+          "Move sandbox lifecycle and cleanup out of the pipeline into the adapter."
+        ],
+        "acceptance": [
+          "Execution can run in an ephemeral container.",
+          "Compensation destroys the compute environment even on failure.",
+          "Adapter telemetry is attached to pipeline events."
+        ],
+        "files": [
+          "core/runtime_adapters.py",
+          "core/compute/docker_adapter.py",
+          "core/pipeline.py",
+          "tests/test_runtime_adapters.py"
+        ]
+      },
+      {
+        "id": "DEBT-011",
+        "title": "Implement live Andon monitor with filesystem event streaming",
+        "priority": "critical",
+        "primitive": "monitor",
+        "package": "core",
+        "effort": "L",
+        "status": "DONE",
+        "ground_truth": [
+          "Post-hoc path validation is weaker than live runtime enforcement.",
+          "The compiler should kill execution immediately on unauthorized writes."
+        ],
+        "scope": [
+          "Stream file events from the compute adapter back to the compiler.",
+          "Kill the runtime when a non-authorized file is touched.",
+          "Emit structured security diagnostics and warnings."
+        ],
+        "acceptance": [
+          "Unauthorized writes are interrupted in-flight.",
+          "Monitor events include offending path and action.",
+          "Warnings and hard violations are recorded separately."
+        ],
+        "files": [
+          "core/monitor.py",
+          "core/runtime_adapters.py",
+          "tests/test_monitor.py"
+        ]
+      },
+      {
+        "id": "DEBT-012",
+        "title": "Implement tiered execution, model fallback, and token-cost budgets",
+        "priority": "high",
+        "primitive": "llm-dispatch",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Not every task needs the most expensive model tier.",
+          "Production compilers need budget enforcement."
+        ],
+        "scope": [
+          "Add draft and heavy model tiers with verification-driven fallback.",
+          "Track token and cost budgets across retries.",
+          "Expose telemetry for model choice, retries, and budget consumption."
+        ],
+        "acceptance": [
+          "Simple tasks can execute on a draft tier.",
+          "Failed verification can trigger re-execution on a higher tier.",
+          "Budget exhaustion fails closed."
+        ],
+        "files": [
+          "core/executors.py",
+          "core/budgets.py",
+          "core/pipeline.py",
+          "tests/test_executors.py"
+        ]
+      },
+      {
+        "id": "DEBT-013",
+        "title": "Add semantic VCS adapter with verified commits and revert-to-stable",
+        "priority": "high",
+        "primitive": "vcs",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Applying diffs directly is not enough for a production compiler.",
+          "Repository state transitions should be atomic and reversible."
+        ],
+        "scope": [
+          "Wrap patch apply, commit, rollback, and branch pruning in a VCS adapter.",
+          "Validate syntax before commit promotion.",
+          "Expose revert-to-stable for saga compensation."
+        ],
+        "acceptance": [
+          "Failed verification restores a stable repository state.",
+          "Verified outputs can be promoted to commits atomically.",
+          "Repository cleanup does not require manual intervention."
+        ],
+        "files": [
+          "core/vcs.py",
+          "core/pipeline.py",
+          "tests/test_vcs.py"
+        ]
+      },
+      {
+        "id": "DEBT-014",
+        "title": "Add compiler diagnostics, source mapping, and soft warnings",
+        "priority": "medium",
+        "primitive": "diagnostics",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Production systems need warnings and source mapping, not just hard failures."
+        ],
+        "scope": [
+          "Map runtime and verification failures back to IR instructions or passes.",
+          "Emit structured warnings for deprecated APIs or risky edits.",
+          "Expose diagnostic summaries in the event store."
+        ],
+        "acceptance": [
+          "Tracebacks can be tied to the originating pipeline pass.",
+          "Warnings are distinct from hard errors.",
+          "Diagnostics are machine-readable."
+        ],
+        "files": [
+          "core/diagnostics.py",
+          "core/events.py",
+          "core/pipeline.py",
+          "tests/test_diagnostics.py"
+        ]
       }
     ],
     "execution_order": [
@@ -304,7 +505,20 @@
         "DEBT-006"
       ],
       [
-        "DEBT-007"
+        "DEBT-007",
+        "DEBT-008"
+      ],
+      [
+        "DEBT-009",
+        "DEBT-012"
+      ],
+      [
+        "DEBT-010",
+        "DEBT-011"
+      ],
+      [
+        "DEBT-013",
+        "DEBT-014"
       ]
     ]
   },
@@ -401,7 +615,14 @@
       "DEBT-004": "high",
       "DEBT-005": "critical",
       "DEBT-006": "medium",
-      "DEBT-007": "medium"
+      "DEBT-007": "medium",
+      "DEBT-008": "high",
+      "DEBT-009": "medium",
+      "DEBT-010": "high",
+      "DEBT-011": "critical",
+      "DEBT-012": "high",
+      "DEBT-013": "high",
+      "DEBT-014": "medium"
     },
     "execution_order": [
       [
@@ -417,7 +638,20 @@
         "DEBT-006"
       ],
       [
-        "DEBT-007"
+        "DEBT-007",
+        "DEBT-008"
+      ],
+      [
+        "DEBT-009",
+        "DEBT-012"
+      ],
+      [
+        "DEBT-010",
+        "DEBT-011"
+      ],
+      [
+        "DEBT-013",
+        "DEBT-014"
       ]
     ],
     "verification": {

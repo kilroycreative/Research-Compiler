@@ -30,6 +30,8 @@ class ExecutorConfig(BaseModel):
 
     provider: ModelProvider
     model: str | None = None
+    draft_model: str | None = None
+    heavy_model: str | None = None
     command: str | None = None
     base_url: str | None = None
     api_key_env: str | None = None
@@ -52,12 +54,27 @@ class PromptCompiler:
 
     def build(self, plan: ExecutionPlan, workspace: Path) -> PreparedPrompt:
         file_sections: list[str] = []
-        for rel_path in plan.authorized_files:
-            file_path = workspace / rel_path
-            if file_path.exists():
-                file_sections.append(f"FILE: {rel_path}\n```text\n{file_path.read_text(encoding='utf-8')}\n```")
-            else:
-                file_sections.append(f"FILE: {rel_path}\n<missing>")
+        if plan.context_slices:
+            for context in plan.context_slices:
+                file_sections.append(
+                    "\n".join(
+                        [
+                            f"FILE: {context.file_path}",
+                            f"RATIONALE: {context.rationale}",
+                            f"SYMBOLS: {', '.join(context.symbols) if context.symbols else '<none>'}",
+                            "```text",
+                            context.excerpt,
+                            "```",
+                        ]
+                    )
+                )
+        else:
+            for rel_path in plan.authorized_files:
+                file_path = workspace / rel_path
+                if file_path.exists():
+                    file_sections.append(f"FILE: {rel_path}\n```text\n{file_path.read_text(encoding='utf-8')}\n```")
+                else:
+                    file_sections.append(f"FILE: {rel_path}\n<missing>")
 
         system_prompt = (
             "You are a software patch generator. "
@@ -72,6 +89,12 @@ class PromptCompiler:
                 plan.constitution,
                 "Authorized files:",
                 "\n".join(f"- {path}" for path in plan.authorized_files),
+                "Linker map:",
+                "\n".join(
+                    f"- {entry.file_path}:{entry.symbol_name} -> {entry.resolved_file_path or '?'}:{entry.resolved_symbol_name or '?'}"
+                    for entry in plan.linker_map
+                )
+                or "- <none>",
                 "Resource limits:",
                 json.dumps(plan.resource_limits.model_dump(mode="json"), sort_keys=True),
                 "Requirements:",
@@ -94,10 +117,17 @@ class BaseModelExecutor:
         prompt = self.prompt_compiler.build(plan, workspace)
         raw_output = await self._run(prompt, workspace)
         patch = extract_unified_diff(raw_output)
+        prompt_tokens = estimate_tokens(prompt.system_prompt + "\n" + prompt.user_prompt)
+        completion_tokens = estimate_tokens(raw_output)
         return ExecutionResult(
             patch=patch,
             touched_files=extract_patch_paths(patch),
-            metadata={"provider": self.config.provider, "model": self.config.model},
+            metadata={
+                "provider": self.config.provider,
+                "model": self.config.model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            },
         )
 
     async def _run(self, prompt: PreparedPrompt, workspace: Path) -> str:
@@ -257,3 +287,7 @@ def extract_patch_paths(patch: str) -> list[str]:
             if value != "/dev/null":
                 paths.append(value)
     return sorted(set(paths))
+
+
+def estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)

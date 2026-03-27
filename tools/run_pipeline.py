@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
 
 from core import (
     ActionCache,
+    CostTracker,
+    TieredDispatcher,
     EventStore,
     ModelProvider,
     Pipeline,
@@ -44,7 +46,7 @@ class NullExecutor:
 
 async def run(payload: dict, cache_path: Path, event_path: Path) -> dict:
     request = PipelineRequest.model_validate(payload)
-    executor = build_executor(request.executor) if request.executor else NullExecutor()
+    executor = TieredDispatcher.from_executor_config(request.executor) if request.executor else NullExecutor()
     pipeline = Pipeline(
         executor=executor,
         action_cache=ActionCache(cache_path),

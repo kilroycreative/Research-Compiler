@@ -1,0 +1,22 @@
+{
+  "gpt-4o-mini": {
+    "input_per_million_usd": 0.15,
+    "output_per_million_usd": 0.6
+  },
+  "gpt-5": {
+    "input_per_million_usd": 5.0,
+    "output_per_million_usd": 15.0
+  },
+  "claude-3-5-sonnet": {
+    "input_per_million_usd": 3.0,
+    "output_per_million_usd": 15.0
+  },
+  "sonnet": {
+    "input_per_million_usd": 3.0,
+    "output_per_million_usd": 15.0
+  },
+  "local-model": {
+    "input_per_million_usd": 0.0,
+    "output_per_million_usd": 0.0
+  }
+}

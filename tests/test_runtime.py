@@ -12,16 +12,23 @@ from core import (
     AuthorizedWriteWatcher,
     EventStore,
     FrontendIR,
+    ModelTier,
     PassManager,
     Pipeline,
     PipelineFailure,
     PipelineRequest,
+    ResourceConstraints,
     ResourceLimits,
     Saga,
     SandboxType,
     SecurityViolation,
+    TieredDispatcher,
+    VerificationFailure,
     VerificationRunner,
 )
+from core.adapters.base import RuntimeEvent, RuntimeSession
+from core.adapters.local import LocalRuntimeAdapter
+from core.worktree import WorktreeManager
 from core.pipeline import ExecutionResult
 
 
@@ -35,6 +42,54 @@ class FakeExecutor:
     async def execute(self, plan, workspace):
         self.calls += 1
         return ExecutionResult(patch=self.patch, touched_files=self.touched_files, metadata=self.metadata)
+
+
+class SlowExecutor(FakeExecutor):
+    async def execute(self, plan, workspace):
+        self.calls += 1
+        await asyncio.sleep(0.2)
+        return ExecutionResult(patch=self.patch, touched_files=self.touched_files, metadata=self.metadata)
+
+
+class FakeWorktreeManager(WorktreeManager):
+    def __init__(self, repo_root: Path) -> None:
+        self.repo_root = repo_root
+        self.cleaned: list[Path] = []
+
+    def create(self, *, task_id: str, base_commit: str, constitution: str) -> Path:
+        del base_commit, constitution
+        workspace = self.repo_root / f"{task_id}-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        return workspace
+
+    def cleanup(self, path: str | Path) -> None:
+        self.cleaned.append(Path(path))
+
+
+class StreamingLocalAdapter(LocalRuntimeAdapter):
+    def __init__(self, repo_root: Path, events: list[RuntimeEvent], worktree_manager: WorktreeManager | None = None) -> None:
+        super().__init__(repo_root, worktree_manager=worktree_manager)
+        self._events = events
+
+    async def stream_events(self, session: RuntimeSession):
+        for event in self._events:
+            yield event
+            await asyncio.sleep(0)
+
+
+class FixedPatchExecutor:
+    def __init__(self, patch: str, *, prompt_tokens: int = 100, completion_tokens: int = 100) -> None:
+        self.patch = patch
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+    async def execute(self, plan, workspace):
+        del plan, workspace
+        return ExecutionResult(
+            patch=self.patch,
+            touched_files=["sample_app.py"] if self.patch else [],
+            metadata={"prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens},
+        )
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -187,6 +242,170 @@ new file mode 100644
             )
             with self.assertRaises(SecurityViolation):
                 await pipeline.run(request)
+
+    async def test_pipeline_kills_on_live_unauthorized_runtime_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._init_repo(Path(tmp))
+            self._write_pytest_test(
+                repo,
+                """
+from sample_app import value
+
+def test_bug():
+    assert value() == 1
+""".strip()
+                + "\n",
+            )
+            base_commit = self._commit_all(repo, "initial")
+            worktree_manager = FakeWorktreeManager(repo)
+            runtime_adapter = StreamingLocalAdapter(
+                repo,
+                events=[RuntimeEvent(path="CLAUDE.md", action="modified")],
+                worktree_manager=worktree_manager,
+            )
+            pipeline = Pipeline(
+                executor=SlowExecutor(patch="", touched_files=[]),
+                action_cache=ActionCache(repo / "action_cache.db"),
+                verifier=VerificationRunner(),
+                event_store=EventStore(repo / "events.jsonl"),
+                runtime_adapter=runtime_adapter,
+                worktree_manager=worktree_manager,
+            )
+            request = PipelineRequest(
+                task_id="bugfix",
+                base_commit=base_commit,
+                authorized_files=["sample_app.py"],
+                constitution="Keep fix scoped",
+                verification_contracts=[
+                    {"kind": "pass_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                ],
+                model_id="gpt-5.4",
+                repo_root=str(repo),
+                sandbox_type=SandboxType.WORKTREE,
+            )
+            with self.assertRaises(SecurityViolation):
+                await pipeline.run(request)
+            events = EventStore(repo / "events.jsonl").read_all()
+            self.assertIn("runtime_event", [event["event_type"] for event in events])
+            self.assertIn(repo / "bugfix-workspace", worktree_manager.cleaned)
+
+    async def test_pipeline_escalates_from_draft_to_production(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._init_repo(Path(tmp))
+            self._write_pytest_test(
+                repo,
+                """
+from sample_app import value
+
+def test_bug():
+    assert value() == 2
+""".strip()
+                + "\n",
+            )
+            base_commit = self._commit_all(repo, "initial")
+            bad_patch = """diff --git a/sample_app.py b/sample_app.py
+index 1c02a8f..75db990 100644
+--- a/sample_app.py
++++ b/sample_app.py
+@@ -1,2 +1,2 @@
+ def value():
+-    return 1
++    return 3
+"""
+            good_patch = """diff --git a/sample_app.py b/sample_app.py
+index 1c02a8f..75db990 100644
+--- a/sample_app.py
++++ b/sample_app.py
+@@ -1,2 +1,2 @@
+ def value():
+-    return 1
++    return 2
+"""
+            dispatcher = TieredDispatcher(
+                draft_executor=FixedPatchExecutor(bad_patch, prompt_tokens=100, completion_tokens=50),
+                production_executor=FixedPatchExecutor(good_patch, prompt_tokens=200, completion_tokens=80),
+                draft_model="gpt-4o-mini",
+                production_model="gpt-5",
+            )
+            pipeline = Pipeline(
+                executor=dispatcher,
+                action_cache=ActionCache(repo / "action_cache.db"),
+                verifier=VerificationRunner(),
+                event_store=EventStore(repo / "events.jsonl"),
+            )
+            request = PipelineRequest(
+                task_id="bugfix",
+                base_commit=base_commit,
+                authorized_files=["sample_app.py"],
+                constitution="Keep fix scoped",
+                verification_contracts=[
+                    {"kind": "fail_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                    {"kind": "pass_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                ],
+                model_id="gpt-5",
+                repo_root=str(repo),
+                sandbox_type=SandboxType.LOCAL,
+                resource_limits=ResourceLimits(max_runtime_seconds=60, max_memory_mb=256),
+                resource_constraints=ResourceConstraints(model_tier=ModelTier.DRAFT, max_cost_usd=5.0, allow_escalation=True),
+            )
+            result = await pipeline.run(request)
+            self.assertFalse(result.cache_hit)
+            events = EventStore(repo / "events.jsonl").read_all()
+            attempts = [event for event in events if event["event_type"] == "dispatch_attempt"]
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(attempts[0]["payload"]["status"], "verification_failed")
+            self.assertEqual(attempts[1]["payload"]["status"], "verified")
+
+    async def test_pipeline_reverts_to_stable_on_verification_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._init_repo(Path(tmp))
+            self._write_pytest_test(
+                repo,
+                """
+from sample_app import value
+
+def test_bug():
+    assert value() == 2
+""".strip()
+                + "\n",
+            )
+            base_commit = self._commit_all(repo, "initial")
+            bad_patch = """diff --git a/sample_app.py b/sample_app.py
+index 1c02a8f..75db990 100644
+--- a/sample_app.py
++++ b/sample_app.py
+@@ -1,2 +1,2 @@
+ def value():
+-    return 1
++    return 3
+"""
+            pipeline = Pipeline(
+                executor=FixedPatchExecutor(bad_patch, prompt_tokens=100, completion_tokens=50),
+                action_cache=ActionCache(repo / "action_cache.db"),
+                verifier=VerificationRunner(),
+                event_store=EventStore(repo / "events.jsonl"),
+            )
+            request = PipelineRequest(
+                task_id="bugfix",
+                base_commit=base_commit,
+                authorized_files=["sample_app.py"],
+                constitution="Keep fix scoped",
+                verification_contracts=[
+                    {"kind": "fail_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                    {"kind": "pass_to_pass", "selectors": [{"selector": "test_app.py::test_bug"}]},
+                ],
+                model_id="gpt-5",
+                repo_root=str(repo),
+                sandbox_type=SandboxType.LOCAL,
+                resource_limits=ResourceLimits(max_runtime_seconds=60, max_memory_mb=256),
+                resource_constraints=ResourceConstraints(model_tier=ModelTier.PRODUCTION, allow_escalation=False),
+            )
+            with self.assertRaises(VerificationFailure):
+                await pipeline.run(request)
+            current = (repo / "sample_app.py").read_text(encoding="utf-8")
+            self.assertIn("return 1", current)
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+            self.assertEqual(head, base_commit)
 
     def _init_repo(self, root: Path) -> Path:
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
