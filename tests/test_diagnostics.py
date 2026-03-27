@@ -78,6 +78,7 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
             await pipeline.run(request)
             summary = json.loads((repo / ".pipeline" / "task" / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["task_id"], "task")
+            self.assertEqual(summary["status"], "success")
             self.assertGreaterEqual(summary["duration_seconds"], 0)
             self.assertEqual(summary["touched_files"], ["sample_app.py"])
 
@@ -108,6 +109,9 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
             )
             with self.assertRaises(VerificationFailure):
                 await pipeline.run(request)
+            summary = json.loads((repo / ".pipeline" / "task" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "failed")
+            self.assertTrue(summary["diagnostics"])
             events = EventStore(repo / "events.jsonl").read_all()
             self.assertIn("diagnostic", [event["event_type"] for event in events])
 

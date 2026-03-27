@@ -17,7 +17,7 @@ from .diagnostics import SourceMapper, TaskSummaryWriter
 from .events import EventStore
 from .execution_types import ExecutionResult
 from .executors import ExecutorConfig
-from .exceptions import PipelineFailure, VerificationFailure
+from .exceptions import PipelineFailure, PipelineStateCarrier, VerificationFailure
 from .ir import ExecutionPlan, FrontendIR, MiddleEndIR, ResourceConstraints, ResourceLimits, SandboxType, VerificationContract
 from .linker import Linker
 from .monitor import RuntimeMonitor, run_with_monitor
@@ -126,24 +126,38 @@ class Pipeline:
         manager.add("execution_plan", self._pass_execution_plan)
         manager.add("execute_or_replay", self._pass_execute_or_replay)
 
-        state = await manager.run({"request": request})
-        result = PipelineRunResult(
-            frontend_ir=state["frontend_ir"],
-            middle_end_ir=state["middle_end_ir"],
-            execution_plan=state["execution_plan"],
-            cache_key=state["cache_key"],
-            cache_hit=state["cache_hit"],
-            workspace=str(state["workspace"]),
-            touched_files=state["touched_files"],
-            verification=state["verification"],
-            events=state["events"],
-        )
-        self._write_summary(
-            request=request,
-            result=result,
-            duration_seconds=time.time() - started_at,
-        )
-        return result
+        try:
+            state = await manager.run({"request": request})
+            result = PipelineRunResult(
+                frontend_ir=state["frontend_ir"],
+                middle_end_ir=state["middle_end_ir"],
+                execution_plan=state["execution_plan"],
+                cache_key=state["cache_key"],
+                cache_hit=state["cache_hit"],
+                workspace=str(state["workspace"]),
+                touched_files=state["touched_files"],
+                verification=state["verification"],
+                events=state["events"],
+            )
+            self._write_summary(
+                request=request,
+                result=result,
+                duration_seconds=time.time() - started_at,
+                status="success",
+                error=None,
+            )
+            return result
+        except PipelineFailure as exc:
+            state = getattr(exc, "pipeline_state", {"events": []})
+            result = self._result_from_failure_state(request, state)
+            self._write_summary(
+                request=request,
+                result=result,
+                duration_seconds=time.time() - started_at,
+                status="failed",
+                error=str(exc),
+            )
+            raise
 
     async def _pass_frontend(self, state: dict[str, Any]) -> dict[str, Any]:
         request: PipelineRequest = state["request"]
@@ -383,9 +397,21 @@ class Pipeline:
                     {"cache_key": cache_key, "actions": compensation, "error": str(exc)},
                 )
             )
+            failure_state = {
+                **state,
+                "cache_key": cache_key,
+                "cache_hit": False,
+                "workspace": repo_root,
+                "touched_files": [],
+                "verification": {},
+                "events": events,
+            }
             if isinstance(exc, PipelineFailure):
+                setattr(exc, "pipeline_state", failure_state)
                 raise
-            raise PipelineFailure(str(exc)) from exc
+            wrapped = PipelineStateCarrier(str(exc))
+            setattr(wrapped, "pipeline_state", failure_state)
+            raise wrapped from exc
 
     def _resolve_runtime_adapter(self, plan: ExecutionPlan, repo_root: Path) -> RuntimeAdapter:
         if self.runtime_adapter is not None:
@@ -417,7 +443,50 @@ class Pipeline:
                     paths.append(path)
         return sorted(set(paths))
 
-    def _write_summary(self, *, request: PipelineRequest, result: PipelineRunResult, duration_seconds: float) -> None:
+    def _result_from_failure_state(self, request: PipelineRequest, state: dict[str, Any]) -> PipelineRunResult:
+        frontend_ir = state.get(
+            "frontend_ir",
+            FrontendIR(task_id=request.task_id, base_commit=request.base_commit, authorized_files=request.authorized_files),
+        )
+        middle_end_ir = state.get(
+            "middle_end_ir",
+            MiddleEndIR(
+                **frontend_ir.model_dump(mode="json"),
+                constitution=request.constitution,
+                verification_contracts=request.verification_contracts,
+            ),
+        )
+        execution_plan = state.get(
+            "execution_plan",
+            ExecutionPlan(
+                **middle_end_ir.model_dump(mode="json"),
+                model_id=request.model_id,
+                sandbox_type=request.sandbox_type,
+                resource_limits=request.resource_limits,
+                resource_constraints=request.resource_constraints,
+            ),
+        )
+        return PipelineRunResult(
+            frontend_ir=frontend_ir,
+            middle_end_ir=middle_end_ir,
+            execution_plan=execution_plan,
+            cache_key=state.get("cache_key", self.action_cache.compute_action_key(frontend_ir, middle_end_ir.constitution)),
+            cache_hit=bool(state.get("cache_hit", False)),
+            workspace=str(state.get("workspace", Path(request.repo_root).resolve())),
+            touched_files=list(state.get("touched_files", [])),
+            verification=dict(state.get("verification", {})),
+            events=list(state.get("events", [])),
+        )
+
+    def _write_summary(
+        self,
+        *,
+        request: PipelineRequest,
+        result: PipelineRunResult,
+        duration_seconds: float,
+        status: str,
+        error: str | None,
+    ) -> None:
         summary_path = Path(request.repo_root).resolve() / ".pipeline" / request.task_id / "summary.json"
         writer = TaskSummaryWriter(summary_path)
         diagnostics = [event["payload"] for event in result.events if event["event_type"] == "diagnostic"]
@@ -425,6 +494,7 @@ class Pipeline:
         writer.write(
             {
                 "task_id": request.task_id,
+                "status": status,
                 "cache_hit": result.cache_hit,
                 "workspace": result.workspace,
                 "touched_files": result.touched_files,
@@ -433,5 +503,6 @@ class Pipeline:
                 "dispatch_attempts": dispatch,
                 "total_cost_usd": sum(float(item.get("cost_usd", 0.0)) for item in dispatch),
                 "diagnostics": diagnostics,
+                "error": error,
             }
         )

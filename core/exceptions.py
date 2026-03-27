@@ -21,3 +21,7 @@ class WorktreeError(PipelineFailure):
 
 class BudgetExceeded(PipelineFailure):
     """Raised when model execution exceeds token or cost budgets."""
+
+
+class PipelineStateCarrier(PipelineFailure):
+    """Pipeline failure annotated with partial state for summary emission."""

@@ -38,6 +38,7 @@ from .linker import Linker
 from .monitor import RuntimeMonitor, run_with_monitor
 from .optimizer_cache import OptimizerCache
 from .pipeline import PassManager, Pipeline, PipelineRequest, PipelineRunResult
+from .refinement import RefinementEmitter, RefinementPlanner, RefinementTask
 from .saga import Saga
 from .slicing import ContextPruner
 from .symbols import SymbolTableBuilder
@@ -81,6 +82,9 @@ __all__ = [
     "PipelineRunResult",
     "PassToPassContract",
     "PytestSelector",
+    "RefinementEmitter",
+    "RefinementPlanner",
+    "RefinementTask",
     "ResourceConstraints",
     "ResourceLimits",
     "SourceMapper",
