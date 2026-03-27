@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core import DockerRuntimeAdapter, LocalRuntimeAdapter, ResourceLimits, SandboxType, WorktreeManager
+from core import DockerRuntimeAdapter, LocalRuntimeAdapter, PollingMonitorBackend, ResourceLimits, SandboxType, WorktreeManager
 from core.adapters.base import RuntimeEvent, RuntimeSession
 from core.ir import ExecutionPlan
 
@@ -23,6 +23,7 @@ class RuntimeAdapterTests(unittest.TestCase):
             self.assertTrue(session.workspace.name.startswith("task"))
             asyncio.run(adapter.compensate(session))
             self.assertEqual(manager.cleaned, [session.workspace])
+            self.assertEqual(adapter.telemetry(session)["monitor_backend"], "polling")
 
     @patch("core.adapters.docker.shutil.which", return_value="/usr/local/bin/docker")
     @patch("core.adapters.docker.subprocess.run")
@@ -41,6 +42,14 @@ class RuntimeAdapterTests(unittest.TestCase):
             self.assertEqual(session.cleanup_token, "container-123")
             asyncio.run(adapter.compensate(session))
             self.assertEqual(manager.cleaned, [session.workspace])
+
+    def test_local_runtime_adapter_uses_custom_monitor_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".git").mkdir()
+            adapter = LocalRuntimeAdapter(repo, worktree_manager=FakeWorktreeManager(repo), monitor_backend=PollingMonitorBackend())
+            session = asyncio.run(adapter.execute(self._plan(SandboxType.LOCAL)))
+            self.assertEqual(adapter.telemetry(session)["monitor_backend"], "polling")
 
     def _plan(self, sandbox_type: SandboxType) -> ExecutionPlan:
         return ExecutionPlan(

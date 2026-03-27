@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import RefinementEmitter, RefinementPlanner
+from core import RefinementEmitter, RefinementPlanner, RefinementQueueEmitter
 
 
 class RefinementPlannerTests(unittest.TestCase):
@@ -67,6 +67,35 @@ class RefinementPlannerTests(unittest.TestCase):
             self.assertTrue(manifest.exists())
             ticket_files = list(output_dir.glob("refine-*.md"))
             self.assertEqual(len(ticket_files), 1)
+
+    def test_queue_emitter_writes_car_style_ticket_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            summary_dir = repo / ".pipeline" / "task-c"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "task_id": "task-c",
+                        "status": "failed",
+                        "diagnostics": [
+                            {
+                                "level": "error",
+                                "code": "PIPELINE_FAILURE",
+                                "message": "Verifier failed",
+                                "pass_name": "execute_or_replay",
+                            }
+                        ],
+                        "error": "Verifier failed",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            tasks = RefinementPlanner(repo).plan()
+            queue_root = repo / ".pipeline" / "refinement-queue"
+            manifest = RefinementQueueEmitter(queue_root).write(tasks)
+            self.assertTrue(manifest.exists())
+            self.assertTrue((queue_root / ".codex-autorunner" / "tickets" / "RTICKET-001.md").exists())
 
 
 if __name__ == "__main__":

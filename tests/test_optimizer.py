@@ -61,6 +61,22 @@ class OptimizerTests(unittest.TestCase):
             self.assertIn("def value", slices[0].excerpt)
             self.assertIn("helper", slices[0].rationale)
 
+    def test_symbol_table_supports_typescript_regex_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.ts").write_text(
+                "import { helper } from './helpers';\nexport function value(input: number) { return helper(input); }\n",
+                encoding="utf-8",
+            )
+            builder = SymbolTableBuilder()
+            symbols = builder.build(root, ["sample.ts"])
+            self.assertTrue(any(symbol.name == "value" for symbol in symbols))
+
+            pruner = ContextPruner()
+            slices = pruner.build(root, ["sample.ts"], symbols, [])
+            self.assertEqual(len(slices), 1)
+            self.assertIn("value", slices[0].excerpt)
+
     def test_pipeline_populates_optimized_middle_end(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

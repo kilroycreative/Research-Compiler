@@ -20,7 +20,11 @@ from core import (
     EventStore,
     ModelProvider,
     Pipeline,
+    PipelineFailure,
     PipelineRequest,
+    RefinementEmitter,
+    RefinementPlanner,
+    RefinementQueueEmitter,
     VerificationRunner,
     WorktreeManager,
     build_executor,
@@ -44,6 +48,19 @@ class NullExecutor:
         )
 
 
+def emit_refinement_outputs(repo_root: str | Path) -> dict:
+    repo_path = Path(repo_root).expanduser().resolve()
+    pipeline_root = repo_path / ".pipeline"
+    tasks = RefinementPlanner(repo_path).plan()
+    manifest_path = RefinementEmitter(pipeline_root / "refinements").write(tasks)
+    queue_manifest = RefinementQueueEmitter(pipeline_root / "refinement-queue").write(tasks)
+    return {
+        "count": len(tasks),
+        "manifest": str(manifest_path),
+        "queue_manifest": str(queue_manifest),
+    }
+
+
 async def run(payload: dict, cache_path: Path, event_path: Path) -> dict:
     request = PipelineRequest.model_validate(payload)
     executor = TieredDispatcher.from_executor_config(request.executor) if request.executor else NullExecutor()
@@ -54,13 +71,22 @@ async def run(payload: dict, cache_path: Path, event_path: Path) -> dict:
         event_store=EventStore(event_path),
         worktree_manager=WorktreeManager(request.repo_root),
     )
-    result = await pipeline.run(request)
+    try:
+        result = await pipeline.run(request)
+    except PipelineFailure as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "refinements": emit_refinement_outputs(request.repo_root),
+        }
     return {
+        "ok": True,
         "cache_hit": result.cache_hit,
         "cache_key": result.cache_key,
         "workspace": result.workspace,
         "touched_files": result.touched_files,
         "verification": result.verification,
+        "refinements": emit_refinement_outputs(request.repo_root),
     }
 
 
@@ -98,6 +124,8 @@ def main() -> None:
         )
     )
     print(json.dumps(result, indent=2))
+    if not result.get("ok", True):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

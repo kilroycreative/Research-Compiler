@@ -2,6 +2,14 @@
 
 from .base import RuntimeAdapter, RuntimeEvent, RuntimeSession
 from .docker import DockerRuntimeAdapter
+from .humanlayer import HumanLayerRuntimeAdapter
 from .local import LocalRuntimeAdapter
 
-__all__ = ["RuntimeAdapter", "RuntimeEvent", "RuntimeSession", "DockerRuntimeAdapter", "LocalRuntimeAdapter"]
+__all__ = [
+    "RuntimeAdapter",
+    "RuntimeEvent",
+    "RuntimeSession",
+    "DockerRuntimeAdapter",
+    "HumanLayerRuntimeAdapter",
+    "LocalRuntimeAdapter",
+]

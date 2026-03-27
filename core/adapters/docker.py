@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
-import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 from ..exceptions import PipelineFailure
 from ..ir import ExecutionPlan
+from ..monitor_backends import MonitorBackend, build_monitor_backend
 from ..worktree import WorktreeManager
 from .base import RuntimeAdapter, RuntimeEvent, RuntimeSession
 
@@ -25,11 +25,13 @@ class DockerRuntimeAdapter(RuntimeAdapter):
         image: str = "python:3.12-slim",
         worktree_manager: WorktreeManager | None = None,
         docker_bin: str = "docker",
+        monitor_backend: MonitorBackend | None = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.image = image
         self.worktree_manager = worktree_manager or WorktreeManager(self.repo_root)
         self.docker_bin = docker_bin
+        self.monitor_backend = monitor_backend or build_monitor_backend()
 
     async def execute(self, plan: ExecutionPlan) -> RuntimeSession:
         if shutil.which(self.docker_bin) is None:
@@ -86,28 +88,11 @@ class DockerRuntimeAdapter(RuntimeAdapter):
         await asyncio.to_thread(self.worktree_manager.cleanup, session.workspace)
 
     async def stream_events(self, session: RuntimeSession) -> AsyncIterator[RuntimeEvent]:
-        mtimes: dict[Path, int] = {}
-        while True:
-            for path in session.workspace.rglob("*"):
-                if path.is_dir():
-                    continue
-                try:
-                    stat = path.stat()
-                except FileNotFoundError:
-                    continue
-                current = stat.st_mtime_ns
-                previous = mtimes.get(path)
-                mtimes[path] = current
-                if previous is None:
-                    continue
-                if current != previous:
-                    yield RuntimeEvent(
-                        path=path.relative_to(session.workspace).as_posix(),
-                        action="modified",
-                        timestamp=time.time(),
-                        details={"container_id": session.cleanup_token},
-                    )
-            await asyncio.sleep(0.05)
+        async for event in self.monitor_backend.stream(
+            session.workspace,
+            details={"container_id": session.cleanup_token},
+        ):
+            yield event
 
     def telemetry(self, session: RuntimeSession) -> dict[str, object]:
-        return dict(session.telemetry)
+        return {**session.telemetry, "monitor_backend": self.monitor_backend.name}

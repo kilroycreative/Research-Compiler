@@ -1,7 +1,7 @@
 """Core runtime primitives for the compiler-oriented execution pipeline."""
 
 from .action_cache import ActionCache, CachedAction
-from .adapters import DockerRuntimeAdapter, LocalRuntimeAdapter, RuntimeAdapter, RuntimeSession
+from .adapters import DockerRuntimeAdapter, HumanLayerRuntimeAdapter, LocalRuntimeAdapter, RuntimeAdapter, RuntimeSession
 from .diagnostics import Diagnostic, SourceMapper, TaskSummaryWriter
 from .dispatcher import TieredDispatcher
 from .events import EventStore
@@ -36,9 +36,13 @@ from .ir import (
 )
 from .linker import Linker
 from .monitor import RuntimeMonitor, run_with_monitor
+from .monitor_backends import MonitorBackend, PollingMonitorBackend, WatchfilesMonitorBackend, build_monitor_backend
+from .merge_queue import MergeQueue, QueueResult, QueueTask
 from .optimizer_cache import OptimizerCache
+from .parsers import ParsedDefinition, ParsedModule, ParserRegistry
 from .pipeline import PassManager, Pipeline, PipelineRequest, PipelineRunResult
-from .refinement import RefinementEmitter, RefinementPlanner, RefinementTask
+from .refinement import RefinementEmitter, RefinementPlanner, RefinementQueueEmitter, RefinementTask
+from .refinement_runner import RefinementQueueRunner
 from .saga import Saga
 from .slicing import ContextPruner
 from .symbols import SymbolTableBuilder
@@ -63,11 +67,14 @@ __all__ = [
     "ExecutorConfig",
     "ExecutionPlan",
     "ExecutionResult",
+    "HumanLayerRuntimeAdapter",
     "LocalRuntimeAdapter",
     "FailToPassContract",
     "FrontendIR",
     "LinkedSymbol",
+    "MergeQueue",
     "MetricThresholdContract",
+    "MonitorBackend",
     "ModelExecutionError",
     "ModelProvider",
     "ModelTier",
@@ -75,15 +82,23 @@ __all__ = [
     "OpenAICompatibleExecutor",
     "OpenClawExecutor",
     "OptimizerCache",
+    "ParsedDefinition",
+    "ParsedModule",
     "PassManager",
+    "ParserRegistry",
     "Pipeline",
     "PipelineFailure",
     "PipelineRequest",
     "PipelineRunResult",
     "PassToPassContract",
     "PytestSelector",
+    "PollingMonitorBackend",
+    "QueueResult",
+    "QueueTask",
     "RefinementEmitter",
     "RefinementPlanner",
+    "RefinementQueueEmitter",
+    "RefinementQueueRunner",
     "RefinementTask",
     "ResourceConstraints",
     "ResourceLimits",
@@ -107,6 +122,8 @@ __all__ = [
     "CostTracker",
     "TieredDispatcher",
     "TaskSummaryWriter",
+    "WatchfilesMonitorBackend",
     "WorktreeError",
     "WorktreeManager",
+    "build_monitor_backend",
 ]

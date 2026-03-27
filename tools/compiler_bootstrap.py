@@ -364,6 +364,8 @@ def render_repo_bootstrap_script(repo_dir: str) -> str:
         cp "$ROOT/init-compiler.sh" "$TARGET/factory/init-compiler.sh"
         cp "$ROOT/start-compiler-flow.sh" "$TARGET/start-compiler-flow.sh"
         cp "$ROOT/start-compiler-flow.sh" "$TARGET/factory/start-compiler-flow.sh"
+        cp "$ROOT/launch-humanlayer-ticket.sh" "$TARGET/factory/launch-humanlayer-ticket.sh"
+        cp "$ROOT/launch-humanlayer-refinement.sh" "$TARGET/factory/launch-humanlayer-refinement.sh"
         cp "$ROOT/status-compiler-flow.sh" "$TARGET/status-compiler-flow.sh"
         cp "$ROOT/status-compiler-flow.sh" "$TARGET/factory/status-compiler-flow.sh"
         cp "$ROOT/stop-compiler-flow.sh" "$TARGET/stop-compiler-flow.sh"
@@ -381,6 +383,60 @@ def render_repo_bootstrap_script(repo_dir: str) -> str:
         echo "  factory packages   -> $TARGET/factory/session-packages"
         echo "  factory initiation -> $TARGET/factory/initiation"
         echo "  CAR queue          -> $TARGET/.codex-autorunner/tickets"
+        """
+    ).strip() + "\n"
+
+
+def render_humanlayer_ticket_launcher() -> str:
+    return textwrap.dedent(
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+        REPO_ROOT="${REPO_ROOT:-$ROOT/..}"
+        MODEL="${MODEL:-sonnet}"
+        HUMANLAYER_BIN="${HUMANLAYER_BIN:-humanlayer}"
+
+        if [[ $# -lt 1 ]]; then
+          echo "usage: ./launch-humanlayer-ticket.sh TICKET_FILE [--no-launch]" >&2
+          exit 1
+        fi
+
+        python3 "$ROOT/../tools/launch_humanlayer_ticket.py" \
+          --ticket "$1" \
+          --repo-root "$REPO_ROOT" \
+          --model "$MODEL" \
+          --humanlayer-bin "$HUMANLAYER_BIN" \
+          "${@:2}"
+        """
+    ).strip() + "\n"
+
+
+def render_humanlayer_refinement_launcher() -> str:
+    return textwrap.dedent(
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+        REPO_ROOT="${REPO_ROOT:-$ROOT/..}"
+        MODEL="${MODEL:-sonnet}"
+        HUMANLAYER_BIN="${HUMANLAYER_BIN:-humanlayer}"
+        QUEUE_DIR="${QUEUE_DIR:-$ROOT/refinement-queue/.codex-autorunner/tickets}"
+
+        if [[ $# -lt 1 ]]; then
+          echo "usage: ./launch-humanlayer-refinement.sh RTICKET_FILE [--no-launch]" >&2
+          echo "example queue dir: $QUEUE_DIR" >&2
+          exit 1
+        fi
+
+        python3 "$ROOT/../tools/launch_humanlayer_ticket.py" \
+          --ticket "$1" \
+          --repo-root "$REPO_ROOT" \
+          --model "$MODEL" \
+          --humanlayer-bin "$HUMANLAYER_BIN" \
+          "${@:2}"
         """
     ).strip() + "\n"
 
@@ -458,6 +514,8 @@ def generate(config_path: Path, factory_dir: Path) -> None:
     write_file(factory_dir / "session-manifest.json", json.dumps(build_manifest(config, repo_dir), indent=2) + "\n")
     write_file(factory_dir / "init-compiler.sh", render_tmux_launcher(config, script_names), executable=True)
     write_file(factory_dir / "start-compiler-flow.sh", render_start_flow_script(), executable=True)
+    write_file(factory_dir / "launch-humanlayer-ticket.sh", render_humanlayer_ticket_launcher(), executable=True)
+    write_file(factory_dir / "launch-humanlayer-refinement.sh", render_humanlayer_refinement_launcher(), executable=True)
     write_file(factory_dir / "status-compiler-flow.sh", render_status_flow_script(), executable=True)
     write_file(factory_dir / "stop-compiler-flow.sh", render_stop_flow_script(), executable=True)
     write_file(factory_dir / "bootstrap-compiler-repo.sh", render_repo_bootstrap_script(repo_dir), executable=True)

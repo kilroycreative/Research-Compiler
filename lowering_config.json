@@ -489,6 +489,149 @@
           "core/pipeline.py",
           "tests/test_diagnostics.py"
         ]
+      },
+      {
+        "id": "DEBT-015",
+        "title": "Add parser abstraction and tree-sitter-ready multi-language middle-end",
+        "priority": "high",
+        "primitive": "parser",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The middle-end should not be hard-coded to Python AST only.",
+          "Cross-language support requires a parser boundary even when tree-sitter is optional."
+        ],
+        "scope": [
+          "Introduce a parser registry with Python AST, regex fallbacks, and an optional tree-sitter backend.",
+          "Route symbol indexing and context slicing through the parser abstraction.",
+          "Cover at least one non-Python source path in tests."
+        ],
+        "acceptance": [
+          "Symbol indexing is no longer directly coupled to Python-only AST parsing.",
+          "Context pruning works for at least one non-Python language.",
+          "The tree-sitter backend can be selected when available without changing pipeline contracts."
+        ],
+        "files": [
+          "core/parsers.py",
+          "core/symbols.py",
+          "core/slicing.py",
+          "tests/test_optimizer.py"
+        ]
+      },
+      {
+        "id": "DEBT-016",
+        "title": "Add pluggable native monitor backends for harder Andon enforcement",
+        "priority": "critical",
+        "primitive": "monitor-backend",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Polling is a workable default but should not be the only monitor backend.",
+          "The runtime needs a backend boundary for native filesystem event hooks."
+        ],
+        "scope": [
+          "Introduce monitor backend selection with polling and optional watchfiles/native backends.",
+          "Attach monitor backend telemetry to runtime adapters.",
+          "Keep runtime adapter event streaming stable while upgrading the implementation boundary."
+        ],
+        "acceptance": [
+          "Adapters report which monitor backend they are using.",
+          "A native backend can be selected when available without changing the runtime adapter contract.",
+          "Existing Andon logic still passes under the new backend abstraction."
+        ],
+        "files": [
+          "core/monitor_backends.py",
+          "core/adapters/local.py",
+          "core/adapters/docker.py",
+          "tests/test_runtime_adapters.py"
+        ]
+      },
+      {
+        "id": "DEBT-017",
+        "title": "Add merge queue scheduling for concurrent non-overlapping compiler tasks",
+        "priority": "high",
+        "primitive": "merge-queue",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Day 2 operations require concurrent throughput, not only single-task execution.",
+          "File-overlapping tasks should serialize while non-overlapping tasks can run in parallel."
+        ],
+        "scope": [
+          "Add a merge queue scheduler that uses authorized file scope to gate parallelism.",
+          "Allow optional commit promotion after successful queued runs.",
+          "Cover overlapping and non-overlapping queue behavior in tests."
+        ],
+        "acceptance": [
+          "Overlapping tasks do not execute concurrently.",
+          "Independent tasks can execute up to the queue's parallelism limit.",
+          "Queue results report status and optional promoted commit metadata."
+        ],
+        "files": [
+          "core/merge_queue.py",
+          "tests/test_merge_queue.py"
+        ]
+      },
+      {
+        "id": "DEBT-018",
+        "title": "Add executable refinement queue runner for self-evolution loops",
+        "priority": "medium",
+        "primitive": "refinement-runner",
+        "package": "core, tools",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Generating refinement tickets is not enough if nothing can execute them.",
+          "The Day 2 loop needs a sequential runner that can mark follow-up work complete."
+        ],
+        "scope": [
+          "Add a refinement queue runner that executes promoted RTICKET files sequentially.",
+          "Mark tickets done on success and stop on first failure.",
+          "Provide a CLI wrapper for operator use."
+        ],
+        "acceptance": [
+          "Promoted refinement tickets can be executed with a command template.",
+          "Successful tickets are marked done in place.",
+          "The runner stops on failure and reports per-ticket status."
+        ],
+        "files": [
+          "core/refinement_runner.py",
+          "tools/run_refinement_queue.py",
+          "tests/test_refinement_runner.py"
+        ]
+      },
+      {
+        "id": "DEBT-019",
+        "title": "Add HumanLayer BYO-sandbox ticket launcher on top of per-task worktrees",
+        "priority": "medium",
+        "primitive": "humanlayer-launcher",
+        "package": "core, tools",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "HumanLayer currently supports launching in a chosen directory but does not manage git worktrees itself.",
+          "The compiler should be able to attach structured ticket prompts to isolated per-task worktrees."
+        ],
+        "scope": [
+          "Add a HumanLayer runtime adapter that creates a worktree and optionally launches a HumanLayer session into it.",
+          "Provide a CLI tool for launching a generated ticket into a dedicated HumanLayer worktree.",
+          "Document the operator flow and cover it with tests."
+        ],
+        "acceptance": [
+          "A generated ticket can be launched into a dedicated worktree with HumanLayer.",
+          "Dry-run mode can create the worktree without requiring the HumanLayer binary.",
+          "The integration is additive and does not change the default automated pipeline path."
+        ],
+        "files": [
+          "core/adapters/humanlayer.py",
+          "tools/launch_humanlayer_ticket.py",
+          "tests/test_humanlayer_adapter.py",
+          "tests/test_humanlayer_ticket_tool.py",
+          "README.md"
+        ]
       }
     ],
     "execution_order": [
@@ -519,6 +662,17 @@
       [
         "DEBT-013",
         "DEBT-014"
+      ],
+      [
+        "DEBT-015",
+        "DEBT-016"
+      ],
+      [
+        "DEBT-017",
+        "DEBT-018"
+      ],
+      [
+        "DEBT-019"
       ]
     ]
   },
@@ -622,7 +776,12 @@
       "DEBT-011": "critical",
       "DEBT-012": "high",
       "DEBT-013": "high",
-      "DEBT-014": "medium"
+      "DEBT-014": "medium",
+      "DEBT-015": "high",
+      "DEBT-016": "critical",
+      "DEBT-017": "high",
+      "DEBT-018": "medium",
+      "DEBT-019": "medium"
     },
     "execution_order": [
       [
@@ -652,6 +811,17 @@
       [
         "DEBT-013",
         "DEBT-014"
+      ],
+      [
+        "DEBT-015",
+        "DEBT-016"
+      ],
+      [
+        "DEBT-017",
+        "DEBT-018"
+      ],
+      [
+        "DEBT-019"
       ]
     ],
     "verification": {

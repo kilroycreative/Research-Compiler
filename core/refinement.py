@@ -186,3 +186,57 @@ class RefinementEmitter:
 
     def _slugify(self, value: str) -> str:
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+class RefinementQueueEmitter:
+    """Writes refinement tasks as a CAR-style follow-up queue."""
+
+    def __init__(self, queue_root: str | Path) -> None:
+        self.queue_root = Path(queue_root)
+        self.tickets_dir = self.queue_root / ".codex-autorunner" / "tickets"
+        self.tickets_dir.mkdir(parents=True, exist_ok=True)
+
+    def write(self, tasks: list[RefinementTask]) -> Path:
+        agents_path = self.tickets_dir / "AGENTS.md"
+        agents_path.write_text(
+            "# Refinement Tickets\n\nThis folder contains compiler-generated follow-up tickets.\n",
+            encoding="utf-8",
+        )
+        manifest = {
+            "queue_dir": str(self.tickets_dir),
+            "tickets": [],
+        }
+        for index, task in enumerate(tasks, start=1):
+            ticket_name = f"RTICKET-{index:03d}.md"
+            (self.tickets_dir / ticket_name).write_text(self._render_ticket(task), encoding="utf-8")
+            manifest["tickets"].append(
+                {
+                    "ticket_file": ticket_name,
+                    "refinement_id": task.refinement_id,
+                    "source_task_id": task.source_task_id,
+                    "priority": task.priority,
+                }
+            )
+        manifest_path = self.queue_root / "queue-manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return manifest_path
+
+    def _render_ticket(self, task: RefinementTask) -> str:
+        scope = "\n".join(f"- {entry}" for entry in task.recommended_scope)
+        evidence = json.dumps(task.evidence, indent=2, sort_keys=True)
+        return (
+            "---\n"
+            f'title: "{task.title}"\n'
+            'agent: "codex"\n'
+            "done: false\n"
+            f'ticket_id: "{task.refinement_id.lower()}"\n'
+            "---\n\n"
+            "## Goal\n"
+            f"- Resolve the follow-up issue discovered while executing `{task.source_task_id}`.\n\n"
+            "## Problem\n"
+            f"{task.summary}\n\n"
+            "## Tasks\n"
+            f"{scope}\n\n"
+            "## Evidence\n"
+            f"```json\n{evidence}\n```\n"
+        )
