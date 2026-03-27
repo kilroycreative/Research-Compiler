@@ -1,30 +1,31 @@
 {
-  "project_name": "New Topic Product",
-  "product_summary": "Replace this summary after research. State the chosen user, workflow, wedge, and why this build should exist.",
+  "project_name": "Factory Compiler Runtime",
+  "product_summary": "Refactor the run-template from a sequential scaffold generator into a compiler-oriented runtime with structured IR, deterministic caching, verified execution, and content-addressed experiment workspaces.",
   "repo": "./app",
   "constitution": {
-    "title": "New Topic Build Constitution",
-    "what_it_is": "Replace this with a precise product statement after research. Describe the user, the promise, and the core workflow in plain language.",
+    "title": "Factory Compiler Refactor Constitution",
+    "what_it_is": "This project is a compiler-style execution runtime for research-driven factory work. It must lower requests into structured IR, enforce explicit file authorization and verification contracts, and execute changes through idempotent, replayable stages rather than a sequential shell script.",
     "core_loop": [
-      "A user brings a real input into the system.",
-      "The system turns that input into reviewable structured state.",
-      "The product produces a concrete output or decision artifact the user can act on."
+      "A task request is lowered into a validated frontend IR with explicit file authorization.",
+      "The pipeline enriches that request with constitution and verification contracts, then compiles an execution plan.",
+      "Execution either replays a verified cached patch or runs an isolated experiment, verifies the result, and records the full event history."
     ],
     "positioning": [
-      "Replace this with the chosen wedge against direct competitors.",
-      "State what the product will not try to do in v1."
+      "Prefer deterministic compiler primitives over prompt-only orchestration.",
+      "Do not silently mutate shared state or allow unauthorized file writes.",
+      "Treat verification evidence and compensation paths as first-class runtime outputs."
     ],
     "invariants": [
       {
         "title": "Scope Invariants",
         "items": [
           {
-            "label": "One narrow wedge",
-            "text": "The MVP must stay focused on the workflow proved by research, not a broad platform imitation."
+            "label": "IR-first orchestration",
+            "text": "Execution must be driven by typed intermediate representations, not ad hoc script arguments or implicit globals."
           },
           {
-            "label": "Reviewable outputs",
-            "text": "Core outputs must remain inspectable and correctable by a human before final use."
+            "label": "Authorized writes only",
+            "text": "Every execution plan must restrict file mutations to an explicit repository-relative whitelist."
           }
         ]
       },
@@ -32,135 +33,284 @@
         "title": "Implementation Invariants",
         "items": [
           {
-            "label": "Local-first buildability",
-            "text": "A reviewer must be able to run the product locally without exotic infrastructure."
+            "label": "Idempotent execution",
+            "text": "A repeated run with identical frontend inputs, base commit, and constitution must be able to replay from cache."
           },
           {
-            "label": "Traceable product claims",
-            "text": "Do not encode capabilities or promises that are not backed by the research and the actual implementation."
+            "label": "Verified outputs",
+            "text": "No patch is admissible unless targeted fail-to-pass checks fail on the base state and pass-to-pass checks succeed on the patched state."
           }
         ]
       }
     ],
     "primitives": [
       {
-        "name": "Actor",
-        "summary": "The primary user or operational role interacting with the product.",
-        "current_status": "Starter placeholder. Replace after research.",
-        "owner": "app/domain"
+        "name": "FrontendIR",
+        "summary": "The validated task schema containing task identity, base commit, and authorized file scope.",
+        "current_status": "Implemented in core runtime.",
+        "owner": "core/ir.py"
       },
       {
-        "name": "Source Record",
-        "summary": "The incoming object, document, or trigger that starts the workflow.",
-        "current_status": "Starter placeholder. Replace after research.",
-        "owner": "app/domain"
+        "name": "MiddleEndIR",
+        "summary": "The enriched task including constitution and explicit verification contracts.",
+        "current_status": "Implemented in core runtime.",
+        "owner": "core/ir.py"
       },
       {
-        "name": "Reviewable Draft",
-        "summary": "An intermediate output that can be inspected, edited, and approved.",
-        "current_status": "Starter placeholder. Replace after research.",
-        "owner": "app/core"
+        "name": "ExecutionPlan",
+        "summary": "The final lowering stage that binds model choice, sandbox type, and execution resource limits.",
+        "current_status": "Implemented in core runtime.",
+        "owner": "core/ir.py"
       },
       {
-        "name": "Exported Artifact",
-        "summary": "The final object or output package the user leaves with.",
-        "current_status": "Starter placeholder. Replace after research.",
-        "owner": "app/export"
+        "name": "Verified Patch Artifact",
+        "summary": "A replayable patch plus verification evidence and event history.",
+        "current_status": "Implemented through cache, verifier, and event store runtime modules.",
+        "owner": "core/action_cache.py"
       }
     ],
     "file_ownership": [
       {
-        "path": "app/",
-        "description": "Main implementation surface for the product."
+        "path": "core/",
+        "description": "Compiler runtime, IR, cache, pipeline, verification, watcher, and worktree logic."
       },
       {
-        "path": "app/domain/",
-        "description": "Core entities, state transitions, and business rules."
+        "path": "tools/",
+        "description": "Scaffold generators and CLI entrypoints that bridge the runtime into the existing run-kit flow."
       },
       {
-        "path": "app/ui/",
-        "description": "The operator-facing flow and review surfaces."
+        "path": "tests/",
+        "description": "Unit tests covering deterministic cache behavior, authorization, saga compensation, and pipeline orchestration."
       }
     ],
     "done_criteria": [
       {
-        "name": "Core Workflow",
+        "name": "Compiler Runtime",
         "criteria": [
-          "A first-time user can complete the happy path from input to final output.",
-          "The main product state is visible and reviewable.",
-          "The output matches the chosen wedge from research."
+          "A task can be lowered to all three IR levels without implicit fields.",
+          "The pipeline can replay a verified patch from cache or execute through isolated workspace stages.",
+          "Unauthorized writes, verification failures, and cleanup actions are visible in structured runtime outputs."
         ]
       }
     ]
   },
   "debt": {
-    "title": "New Topic Initial Compiler Work Items",
-    "intro": "> Replace these placeholders with product-specific work after research. The goal is to encode the chosen spec as execution waves, not a generic backlog.",
+    "title": "Factory Compiler Runtime Slices",
+    "intro": "> These work items map the compiler-spec refactor into execution slices that can be emitted as tickets and verified locally.",
     "work_items": [
       {
         "id": "DEBT-001",
-        "title": "Implement the core input-to-draft workflow",
+        "title": "Define typed compiler IR and lowering boundaries",
         "priority": "high",
-        "primitive": "core-loop",
-        "package": "app/domain, app/ui",
-        "effort": "M",
-        "status": "TODO",
+        "primitive": "ir",
+        "package": "core",
+        "effort": "S",
+        "status": "DONE",
         "ground_truth": [
-          "Replace with facts learned in research and the baseline repo state."
+          "The template previously lowered configuration into markdown and YAML artifacts only.",
+          "The runtime needs typed FrontendIR, MiddleEndIR, and ExecutionPlan stages."
         ],
         "scope": [
-          "Replace with the exact workflow to implement.",
-          "State what gets created, transformed, and approved."
+          "Create strict Pydantic models for frontend, middle-end, and backend lowering stages.",
+          "Model verification contracts, sandbox type, and resource limits.",
+          "Normalize authorized files into a deterministic whitelist."
         ],
         "acceptance": [
-          "A real sample input can flow through the product.",
-          "The user can inspect or edit the intermediate state.",
-          "The result can be finalized without hidden manual steps."
+          "The IR forbids unknown fields.",
+          "Authorized file lists are normalized and deduplicated.",
+          "Execution plans serialize deterministically."
         ],
         "files": [
-          "app/domain/",
-          "app/ui/"
+          "core/ir.py",
+          "core/__init__.py"
         ]
       },
       {
         "id": "DEBT-002",
-        "title": "Add verification, demo data, and export path",
+        "title": "Implement deterministic action caching and replay artifacts",
         "priority": "medium",
-        "primitive": "verification",
-        "package": "app/export, app/tests",
-        "effort": "M",
-        "status": "TODO",
+        "primitive": "cache",
+        "package": "core",
+        "effort": "S",
+        "status": "DONE",
         "ground_truth": [
-          "Replace with actual constraints from the chosen product wedge."
+          "Repeated runs should bypass agent execution when the same verified input has already been solved."
         ],
         "scope": [
-          "Add demo or fixture data for the happy path.",
-          "Add the export or completion artifact the user expects.",
-          "Add tests or validation around the core workflow."
+          "Implement SQLite-backed action caching keyed by frontend IR, base commit, and constitution hash.",
+          "Store replayable patches and verification summaries.",
+          "Expose a runtime API for cache hit and miss handling."
         ],
         "acceptance": [
-          "A reviewer can demo the end-to-end flow locally.",
-          "The main output can be exported or completed visibly.",
-          "The product has at least one real verification gate."
+          "Cache keys are deterministic.",
+          "Verified patches can be loaded without rerunning execution.",
+          "Cache persistence survives process restarts."
         ],
         "files": [
-          "app/export/",
-          "app/tests/"
+          "core/action_cache.py",
+          "tests/test_runtime.py"
+        ]
+      },
+      {
+        "id": "DEBT-003",
+        "title": "Build async pass manager and saga-based pipeline orchestration",
+        "priority": "high",
+        "primitive": "pipeline",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The repo currently relies on a sequential materialization shell script and generated session packages.",
+          "The target architecture requires explicit passes and compensation for side effects."
+        ],
+        "scope": [
+          "Add an async PassManager and Pipeline that lower requests and orchestrate execution.",
+          "Implement Saga registration and reverse-order compensation.",
+          "Support cache replay before agent execution."
+        ],
+        "acceptance": [
+          "Pass order is explicit and testable.",
+          "Failures trigger compensation in reverse order.",
+          "Pipeline outputs include cache, verification, and event metadata."
+        ],
+        "files": [
+          "core/pipeline.py",
+          "core/saga.py",
+          "tests/test_runtime.py"
+        ]
+      },
+      {
+        "id": "DEBT-004",
+        "title": "Add contract-based verification with fail-to-pass and pass-to-pass stages",
+        "priority": "high",
+        "primitive": "verification",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Verification must prove the targeted bug fails on the base state before the patch and passes after the patch.",
+          "Full-suite or selected regression checks must also remain green after the patch."
+        ],
+        "scope": [
+          "Implement a verification runner for pytest selectors and metric thresholds.",
+          "Return structured verification evidence instead of raw command output only.",
+          "Integrate verification before cache population."
+        ],
+        "acceptance": [
+          "Fail-to-pass checks detect already-green bug selectors.",
+          "Pass-to-pass checks block regressions.",
+          "Verification summaries can be serialized into cache and events."
+        ],
+        "files": [
+          "core/verifier.py",
+          "tests/test_runtime.py"
+        ]
+      },
+      {
+        "id": "DEBT-005",
+        "title": "Implement the andon watcher for authorized file enforcement",
+        "priority": "high",
+        "primitive": "security",
+        "package": "core",
+        "effort": "S",
+        "status": "DONE",
+        "ground_truth": [
+          "Execution must stop immediately when writes occur outside the authorized file list."
+        ],
+        "scope": [
+          "Add an authorization watcher that validates touched paths against the execution plan whitelist.",
+          "Surface security violations as first-class runtime errors.",
+          "Integrate watcher checks into patch replay and agent execution paths."
+        ],
+        "acceptance": [
+          "Allowed paths pass cleanly.",
+          "Disallowed paths raise a security violation.",
+          "Violations are included in pipeline event output."
+        ],
+        "files": [
+          "core/watcher.py",
+          "core/exceptions.py",
+          "tests/test_runtime.py"
+        ]
+      },
+      {
+        "id": "DEBT-006",
+        "title": "Add content-addressed experiment workspaces and event store logging",
+        "priority": "medium",
+        "primitive": "backend",
+        "package": "core",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "Autoresearch-style iterations should not rely on shared mutable directories or hard resets.",
+          "Each experiment should carry a full event trail and IR snapshot."
+        ],
+        "scope": [
+          "Implement a content-addressed worktree manager for git repositories.",
+          "Add a JSONL event store for execution, verification, and compensation events.",
+          "Emit worktree and event metadata from the pipeline."
+        ],
+        "acceptance": [
+          "Worktree paths are derived from stable hashes.",
+          "Event records append as JSONL with event type and payload.",
+          "Cleanup paths are available for saga compensation."
+        ],
+        "files": [
+          "core/worktree.py",
+          "core/events.py",
+          "tests/test_runtime.py"
+        ]
+      },
+      {
+        "id": "DEBT-007",
+        "title": "Integrate runtime with scaffolding flow, generated tickets, and local tests",
+        "priority": "medium",
+        "primitive": "integration",
+        "package": "tools, tests",
+        "effort": "M",
+        "status": "DONE",
+        "ground_truth": [
+          "The existing run kit still materializes lowering-pass and factory artifacts from JSON config.",
+          "The new runtime should coexist with that flow and emit updated ticket slices."
+        ],
+        "scope": [
+          "Add a CLI entrypoint for the runtime pipeline.",
+          "Update the generated queue inputs to use the new compiler slices.",
+          "Add unit tests covering the runtime modules and pipeline behavior."
+        ],
+        "acceptance": [
+          "The repo materializes updated ticket artifacts from lowering_config.json.",
+          "The runtime can be invoked from a local CLI.",
+          "Local tests cover cache, watcher, saga, verification, and pipeline paths."
+        ],
+        "files": [
+          "tools/run_pipeline.py",
+          "README.md",
+          "tests/test_runtime.py"
         ]
       }
     ],
     "execution_order": [
       [
-        "DEBT-001"
+        "DEBT-001",
+        "DEBT-002"
       ],
       [
-        "DEBT-002"
+        "DEBT-003",
+        "DEBT-004"
+      ],
+      [
+        "DEBT-005",
+        "DEBT-006"
+      ],
+      [
+        "DEBT-007"
       ]
     ]
   },
   "review": {
-    "title": "Factory Verification Gates",
-    "intro": "> Use these as generic starter gates, then tighten them for the product you actually chose.",
+    "title": "Compiler Runtime Verification Gates",
+    "intro": "> These gates verify the runtime modules and generated artifacts for the compiler-spec refactor.",
     "how_to_use": [
       "Map each work item to a risk tier in factory.yaml.",
       "Run the required gates before marking an item complete.",
@@ -176,12 +326,12 @@
           "high",
           "medium"
         ],
-        "command": "npm run typecheck",
-        "pass_condition": "No type errors",
+        "command": "python3 -m py_compile core/*.py tools/*.py tests/*.py",
+        "pass_condition": "All runtime and tool modules compile",
         "failure_action": "Stop and return the errors to the implementing agent.",
         "checks": [
-          "Public types match the intended workflow.",
-          "No placeholder types remain in the changed surface."
+          "Public runtime interfaces remain importable.",
+          "No syntax or unresolved import errors remain."
         ]
       },
       {
@@ -191,12 +341,12 @@
           "critical",
           "high"
         ],
-        "command": "npm test",
-        "pass_condition": "Core workflow passes verification",
+        "command": "python3 -m unittest discover -s tests -p 'test_*.py'",
+        "pass_condition": "Runtime unit tests pass",
         "failure_action": "Block merge until the main flow is working.",
         "checks": [
-          "Input-to-output path is verified.",
-          "Human review or approval step remains intact if required."
+          "Pipeline cache replay and execution paths are covered.",
+          "Watcher, saga, and verification rules remain intact."
         ]
       },
       {
@@ -208,11 +358,11 @@
           "medium"
         ],
         "type": "manual",
-        "pass_condition": "Change stays inside the chosen wedge",
+        "pass_condition": "Change stays inside the compiler-runtime wedge",
         "failure_action": "Cut scope or split into a later item.",
         "checks": [
-          "No unresearched product surface was added opportunistically.",
-          "The implementation still matches the research-backed wedge."
+          "No new ad hoc orchestration path bypasses the IR and verifier layers.",
+          "The implementation still matches the compiler-spec architecture."
         ]
       }
     ],
@@ -226,7 +376,7 @@
     "version": 1,
     "project": "run-template",
     "repo": "./app",
-    "description": "Starter compiler config. Replace risk tiers and verification commands once the product is concrete.",
+    "description": "Compiler-runtime refactor slices with explicit caching, verification, security, and pipeline orchestration.",
     "risk_tiers": {
       "critical": [
         "auth",
@@ -246,20 +396,34 @@
     },
     "risk_classification": {
       "DEBT-001": "high",
-      "DEBT-002": "medium"
+      "DEBT-002": "high",
+      "DEBT-003": "high",
+      "DEBT-004": "high",
+      "DEBT-005": "critical",
+      "DEBT-006": "medium",
+      "DEBT-007": "medium"
     },
     "execution_order": [
       [
-        "DEBT-001"
+        "DEBT-001",
+        "DEBT-002"
       ],
       [
-        "DEBT-002"
+        "DEBT-003",
+        "DEBT-004"
+      ],
+      [
+        "DEBT-005",
+        "DEBT-006"
+      ],
+      [
+        "DEBT-007"
       ]
     ],
     "verification": {
-      "lint": "npm run lint",
-      "typecheck": "npm run typecheck",
-      "tests": "npm test"
+      "lint": "python3 -m compileall core tools tests",
+      "typecheck": "python3 -m py_compile core/*.py tools/*.py tests/*.py",
+      "tests": "python3 -m unittest discover -s tests -p 'test_*.py'"
     },
     "metadata": {
       "status": "starter-template",

@@ -53,7 +53,7 @@ def slugify(value: str) -> str:
 def resolve_repo_hint(run_root: Path, repo_hint: str) -> str:
     repo_path = Path(repo_hint).expanduser()
     if not repo_path.is_absolute():
-        repo_path = (run_root / repo_hint).resolve()
+        repo_path = (run_root / repo_path).resolve()
     return str(repo_path)
 
 
@@ -184,7 +184,7 @@ def render_ticket(
         "---",
         f'title: "{item["title"]}"',
         'agent: "codex"',
-        "done: false",
+        f'done: {"true" if item.get("status") == "DONE" else "false"}',
         f'ticket_id: "{ticket_id}"',
         "---",
         "",
